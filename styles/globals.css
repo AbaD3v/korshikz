@@ -2,26 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Глобальные стили сайта */
+/* ====== Глобальные стили сайта ====== */
+:root {
+  --color-primary: #2563eb; /* Синий акцент */
+  --color-primary-dark: #1e40af;
+}
+
+/* Body should use the project's page background per spec */
 body {
-  @apply bg-neutral text-gray-800 font-sans;
+  @apply bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors;
 }
 
+
+/* Контейнер */
 .container {
-  @apply max-w-6xl mx-auto;
+  @apply max-w-6xl mx-auto px-4;
 }
 
+/* Кнопки */
 .btn {
-  @apply bg-primary text-white font-semibold py-2 px-4 rounded-xl hover:bg-primary-dark transition;
+  /* Primary button base */
+  @apply bg-blue-600 text-white font-semibold py-2 px-5 rounded-xl shadow-md hover:bg-blue-700 transition;
 }
 
+/* Dark mode for btn when the .dark class is present on html/body (next-themes attribute="class") */
+.dark .btn {
+  @apply bg-blue-500 hover:bg-blue-600 text-white;
+}
+
+/* Инпуты */
 .input {
-  @apply border border-gray-300 rounded-xl px-3 py-2 w-full focus:ring-2 focus:ring-primary focus:border-primary outline-none;
+  @apply bg-white border border-gray-300 rounded-xl px-3 py-2 w-full text-gray-900 focus:ring-2 focus:ring-[var(--color-primary)] focus:border-[var(--color-primary)] outline-none transition;
+}
+.dark .input {
+  @apply bg-gray-800 border-gray-700 text-gray-100;
 }
 
+/* Карточки */
 .card {
-  @apply bg-white rounded-2xl shadow-md p-5 hover:shadow-lg transition;
+  @apply bg-white rounded-2xl shadow-md p-6 hover:shadow-xl transition duration-300 border border-gray-200;
 }
+.dark .card {
+  @apply bg-gray-800 border-gray-700;
+}
+
+/* Текст, заголовки */
+h1, h2, h3, h4 {
+  @apply font-bold text-gray-900;
+}
+.dark h1, .dark h2, .dark h3, .dark h4 {
+  @apply text-gray-100;
+}
+
+/* Обрезка текста */
 .line-clamp-3 {
   display: -webkit-box;
   -webkit-line-clamp: 3;

@@ -25,7 +25,7 @@ export default function ListingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-10 px-4 text-gray-900 dark:text-gray-100">
       <h1 className="text-4xl font-bold text-center mb-10">Объявления</h1>
 
       {/* Фильтр */}
@@ -35,11 +35,11 @@ export default function ListingsPage() {
           placeholder="Введите город..."
           value={cityFilter}
           onChange={(e) => setCityFilter(e.target.value)}
-          className="flex-1 p-3 border rounded-xl shadow-sm"
+          className="flex-1 p-3 border border-gray-300 dark:border-gray-700 rounded-xl shadow-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
         />
         <button
           onClick={fetchListings}
-          className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700"
+          className="px-6 py-3 bg-blue-600 dark:bg-blue-500 text-white rounded-xl hover:bg-blue-700 dark:hover:bg-blue-600"
         >
           🔍 Найти
         </button>
@@ -47,28 +47,28 @@ export default function ListingsPage() {
 
       {/* Список объявлений */}
       {loading ? (
-        <p className="text-center text-gray-500">Загрузка...</p>
+        <p className="text-center text-gray-500 dark:text-gray-400">Загрузка...</p>
       ) : listings.length === 0 ? (
-        <p className="text-center text-gray-500">Объявлений не найдено 😕</p>
+        <p className="text-center text-gray-500 dark:text-gray-400">Объявлений не найдено 😕</p>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
           {listings.map((item) => (
             <div
               key={item.id}
-              className="bg-white rounded-2xl shadow-md hover:shadow-xl transition p-6 flex flex-col justify-between"
+              className="bg-white dark:bg-gray-800 rounded-2xl shadow-md hover:shadow-xl transition p-6 flex flex-col justify-between border border-gray-200 dark:border-gray-700"
             >
               <div>
-                <h2 className="text-2xl font-semibold mb-2 text-gray-800">{item.title}</h2>
-                <p className="text-gray-600 text-sm mb-4">{item.description}</p>
+                <h2 className="text-2xl font-semibold mb-2 text-gray-900 dark:text-gray-100">{item.title}</h2>
+                <p className="text-gray-600 dark:text-gray-400 text-sm mb-4">{item.description}</p>
               </div>
-              <div className="flex items-center justify-between text-sm text-gray-700 mt-auto">
+              <div className="flex items-center justify-between text-sm text-gray-700 dark:text-gray-400 mt-auto">
                 <span>📍 {item.city}</span>
                 <span className="font-semibold text-blue-600">
                   {item.price?.toLocaleString("ru-RU")} ₸
                 </span>
               </div>
               <div className="mt-2 text-gray-500 text-sm">
-                Мест: {item.filledSpots}/{item.totalSpots}
+                Мест: {item.filledspots}/{item.totalspots}
               </div>
             </div>
           ))}
