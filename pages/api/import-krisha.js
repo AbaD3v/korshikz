@@ -25,6 +25,24 @@ function extractNumberFromString(s) {
   return found[0].replace(/\s|\u00A0|,/g, "");
 }
 
+// Fixed getCoordinates with absolute URL
+async function getCoordinates(address, city) {
+  const query = `${city}, ${address}`.trim();
+  try {
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+    const url = `${baseUrl}/api/geocode?address=${encodeURIComponent(query)}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Geocoding failed');
+    const data = await response.json();
+    if (data.coordinates) {
+      return { latitude: data.coordinates[0], longitude: data.coordinates[1] };
+    }
+  } catch (error) {
+    console.error('Geocoding error:', error);
+  }
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -43,18 +61,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const resp = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT },
-    });
-
-    if (!resp.ok) {
-      return res.status(502).json({ error: "Failed to fetch the page" });
-    }
+    const resp = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+    if (!resp.ok) return res.status(502).json({ error: "Failed to fetch the page" });
 
     const html = await resp.text();
     const $ = cheerio.load(html);
 
-    // --- 1) Try JSON-LD scripts (structured data) ---
+    // --- JSON-LD scripts ---
     let jsonLd = null;
     $('script[type="application/ld+json"]').each((i, el) => {
       const txt = $(el).contents().text();
@@ -62,12 +75,9 @@ export default async function handler(req, res) {
       try {
         const parsedJson = JSON.parse(txt);
         if (!jsonLd) jsonLd = parsedJson;
-      } catch (e) {
-        // ignore malformed JSON-LD
-      }
+      } catch {}
     });
 
-    // Helper holders
     let title = "";
     let description = "";
     let price = "";
@@ -77,18 +87,16 @@ export default async function handler(req, res) {
     let longitude = null;
     const meta = {};
 
-    // --- From JSON-LD if present ---
     if (jsonLd) {
-      let jd = jsonLd;
-      if (Array.isArray(jsonLd)) {
-        jd = jsonLd.find((o) => o["@type"] && (String(o["@type"]).toLowerCase().includes("offer") || String(o["@type"]).toLowerCase().includes("product"))) || jsonLd[0];
-      }
+      let jd = Array.isArray(jsonLd)
+        ? jsonLd.find(o => o["@type"] && (String(o["@type"]).toLowerCase().includes("offer") || String(o["@type"]).toLowerCase().includes("product"))) || jsonLd[0]
+        : jsonLd;
       try {
         if (!title && (jd.name || jd.title)) title = jd.name || jd.title;
         if (!description && jd.description) description = jd.description;
         if (!price && jd.price) price = String(jd.price);
         if (jd.image) {
-          if (Array.isArray(jd.image)) images.push(...jd.image.map((i) => String(i)));
+          if (Array.isArray(jd.image)) images.push(...jd.image.map(i => String(i)));
           else images.push(String(jd.image));
         }
         if (jd.address && (jd.address.addressLocality || jd.address.region)) {
@@ -98,12 +106,10 @@ export default async function handler(req, res) {
           latitude = jd.geo.latitude;
           longitude = jd.geo.longitude;
         }
-      } catch (e) {
-        // ignore
-      }
+      } catch {}
     }
 
-    // --- 2) Meta tags (og:*) ---
+    // --- Meta tags ---
     const ogTitle = $('meta[property="og:title"]').attr('content');
     const ogDesc = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content');
     const ogImage = $('meta[property="og:image"]').attr('content');
@@ -112,7 +118,7 @@ export default async function handler(req, res) {
     if (!description && ogDesc) description = ogDesc.trim();
     if (ogImage) images.push(ogImage);
 
-    // --- 3) DOM selectors – multiple fallbacks ---
+    // --- DOM fallback ---
     if (!title) {
       const h1 = $("h1").first().text().trim();
       if (h1) title = h1;
@@ -135,6 +141,7 @@ export default async function handler(req, res) {
       }
     }
 
+    // --- Price extraction ---
     if (!price) {
       const priceItem = $('[itemprop="price"]').attr("content") || $('[itemprop="price"]').text();
       if (priceItem) price = extractNumberFromString(priceItem);
@@ -163,19 +170,12 @@ export default async function handler(req, res) {
     }
     if (!price) {
       const priceMatch = html.match(/"price"\s*:\s*"?(?<p>[\d\s,]+)"?/i) || html.match(/"price"\s*:\s*(?<p>\d+)/i);
-      if (priceMatch && priceMatch.groups && priceMatch.groups.p) {
-        price = priceMatch.groups.p.replace(/\s|,/g, "");
-      }
+      if (priceMatch && priceMatch.groups && priceMatch.groups.p) price = priceMatch.groups.p.replace(/\s|,/g, "");
     }
 
-    // CITY extraction
+    // --- City extraction ---
     if (!city) {
-      const breadcrumbCandidates = [
-        '.breadcrumbs a',
-        '.crumbs a',
-        '.breadcrumbs__link',
-        '.offer__location a'
-      ];
+      const breadcrumbCandidates = ['.breadcrumbs a', '.crumbs a', '.breadcrumbs__link', '.offer__location a'];
       for (const sel of breadcrumbCandidates) {
         const elems = $(sel);
         if (elems && elems.length) {
@@ -197,41 +197,16 @@ export default async function handler(req, res) {
         const txt = $(sel).first().text().trim();
         if (txt) {
           const cleaned = txt.replace(/Показать на карте/gi, '').trim();
-          if (cleaned) {
-            city = cleaned.split(',')[0].trim();
-            break;
-          }
+          if (cleaned) city = cleaned.split(',')[0].trim();
+          if (city) break;
         }
       }
     }
 
-    // Try to extract simple meta: rooms, area, floor
-    try {
-      // rooms: look for patterns like "3-комнат", "3 комнат"
-      const roomsMatch = html.match(/(\d+)[-\s]?комн/iu) || html.match(/(\d+)\s?комнат/iu);
-      if (roomsMatch) meta.rooms = Number(roomsMatch[1]);
-
-      // area: "100 м²" or "100 м2"
-      const areaMatch = html.match(/(\d+(?:[\s\u00A0]\d+)?(?:,\d+)?)\s?м(?:²|2)/iu);
-      if (areaMatch) meta.area = Number(String(areaMatch[1]).replace(/\s|,/g, ''));
-
-      // floor: "21/25 этаж" or "этаж 21"
-      const floorMatch = html.match(/(\d+)\s*\/\s*(\d+)\s*этаж/iu) || html.match(/этаж[:\s]*?(\d+)/iu);
-      if (floorMatch) {
-        if (floorMatch.length >= 3) {
-          meta.floor = Number(floorMatch[1]);
-          meta.totalFloors = Number(floorMatch[2]);
-        } else meta.floor = Number(floorMatch[1]);
-      }
-    } catch (e) {
-      // ignore meta extraction errors
-    }
-
-    // --- Извлечение изображений ---
-    // не объявляем заново images — используем ранее инициализированный массив (он мог уже содержать jsonLd/og изображения)
+    // --- Images extraction ---
     images = images || [];
 
-    // 1️⃣ Основная галерея (Krisha.kz использует picture/source с data-srcset)
+    // Cheerio static extraction
     $('picture source').each((_, el) => {
       const srcset = $(el).attr('data-srcset') || $(el).attr('srcset');
       if (srcset) {
@@ -240,18 +215,12 @@ export default async function handler(req, res) {
       }
     });
 
-    // 2️⃣ Fallback — обычные img
     $('img').each((_, el) => {
       const src = $(el).attr('data-src') || $(el).attr('src');
-      if (src && src.startsWith('https') && src.includes('photos.krisha.kz')) {
-        images.push(src);
-      }
+      if (src && src.startsWith('https') && src.includes('photos.krisha.kz')) images.push(src);
     });
 
-    // NOTE: не вычисляем uniqueImages здесь — это нужно делать после возможного Puppeteer-fallback,
-    // чтобы динамические ссылки тоже попали в итоговый список.
-
-    // --- Puppeteer fallback: render JS and capture high-quality images if Cheerio didn't find any ---
+    // Puppeteer fallback
     if (!images || images.length === 0) {
       try {
         const executablePath = await chromium.executablePath();
@@ -263,29 +232,20 @@ export default async function handler(req, res) {
         const page = await browser.newPage();
         await page.setUserAgent(USER_AGENT);
         await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
-
         await page.waitForSelector('source, img', { timeout: 10000 }).catch(() => {});
 
         const dynamicImgs = await page.$$eval('source, img', (nodes) => {
           const out = [];
           nodes.forEach((node) => {
             try {
-              // prefer srcset candidates from source
               if (node.tagName.toLowerCase() === 'source') {
                 const ss = node.getAttribute('data-srcset') || node.getAttribute('srcset');
-                if (ss) {
-                  ss.split(',').forEach((s) => {
-                    const url = s.trim().split(' ')[0];
-                    if (url) out.push(url);
-                  });
-                }
+                if (ss) ss.split(',').forEach(s => { const u = s.trim().split(' ')[0]; if (u) out.push(u); });
               } else if (node.tagName.toLowerCase() === 'img') {
                 const s = node.src || node.getAttribute('data-src') || node.getAttribute('data-lazy');
                 if (s) out.push(s);
               }
-            } catch (e) {
-              // ignore each node errors
-            }
+            } catch {}
           });
           return out.filter(Boolean);
         });
@@ -293,43 +253,38 @@ export default async function handler(req, res) {
         await browser.close();
 
         if (dynamicImgs && dynamicImgs.length) {
-          const dynSet = new Set();
-          dynamicImgs.forEach((u) => {
-            if (!u || typeof u !== 'string') return;
-            if (u.includes('krisha-photos.kcdn.online') || u.includes('photos.krisha.kz') || u.includes('krisha-photos')) {
-              let uc = u.split('?')[0].replace(/-\d+x\d+(?=\.\w{3,4}$)/g, '').replace(/\.webp$/i, '.jpg');
-              dynSet.add(uc);
-            }
-          });
-          const dynClean = Array.from(dynSet).map((u) => absolutize(u, parsed.origin));
-          if (dynClean.length) images = Array.from(new Set([...images, ...dynClean]));
+          const dynClean = Array.from(new Set(dynamicImgs.map(u => absolutize(u, parsed.origin))))
+            .map(u => u.replace(/-\d+x\d+(?=\.\w{3,4}$)/g, '').replace(/\.webp$/i, '.jpg'));
+          images = Array.from(new Set([...images, ...dynClean]));
         }
       } catch (puppErr) {
         console.warn("Puppeteer fallback failed:", String(puppErr));
       }
     }
 
-    // --- Final cleanups / fallbacks ---
+    // --- Final cleanups ---
     if (!title) {
       const docTitle = $('title').text().trim();
       if (docTitle) title = docTitle;
     }
 
     if (price) price = String(price).replace(/\s|,/g, '');
-
     if (city) {
       city = city.replace(/Показать на карте/gi, '').trim();
       if (city === '') city = null;
     }
 
-    // --- Формируем ответ ---
     return res.status(200).json({
       title,
       price,
       city,
       description,
       images,
+      latitude,
+      longitude,
+      meta
     });
+
   } catch (err) {
     console.error("import-krisha error:", err);
     return res.status(500).json({ error: "Internal server error", details: String(err) });

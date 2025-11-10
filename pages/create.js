@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../lib/supabaseClient";
 import { sanitizeFileName } from "../lib/sanitizeFileName";
+import MapView from "/components/MapView";
+
 
 export default function CreateListing({ city }) {
   // --- Hooks ---
@@ -13,9 +15,9 @@ export default function CreateListing({ city }) {
     totalSpots: "",
     filledSpots: 0,
     city: city || "",
-    address: "",   // добавлено
-    lat: null,     // добавлено
-    lng: null,     // добавлено
+    address: "",
+    lat: null,
+    lng: null,
   });
   const [images, setImages] = useState([]);
   const [previews, setPreviews] = useState([]);
@@ -58,20 +60,38 @@ export default function CreateListing({ city }) {
     }
     setImporting?.(true);
     try {
-      const res = await fetch("/api/geocode", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: formData.address }),
-      });
-      const data = await res.json();
-      if (res.ok && data.lat && data.lng) {
-        setFormData((prev) => ({ ...prev, lat: data.lat, lng: data.lng }));
+      if (window.ymaps) {
+        // Используем Яндекс.Карты напрямую для геокодинга
+        const res = await new Promise((resolve) => {
+          window.ymaps.ready(() => {
+            window.ymaps.geocode(formData.address).then(resolve);
+          });
+        });
+        
+        const firstGeoObject = res.geoObjects.get(0);
+        if (firstGeoObject) {
+          const coords = firstGeoObject.geometry.getCoordinates();
+          setFormData((prev) => ({ ...prev, lat: coords[0], lng: coords[1] }));
+        } else {
+          throw new Error("Адрес не найден");
+        }
       } else {
-        alert(data.error || "Не удалось определить координаты");
+        // Запасной вариант через API
+        const res = await fetch("/api/geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: formData.address }),
+        });
+        const data = await res.json();
+        if (res.ok && data.lat && data.lng) {
+          setFormData((prev) => ({ ...prev, lat: data.lat, lng: data.lng }));
+        } else {
+          throw new Error(data.error || "Не удалось определить координаты");
+        }
       }
     } catch (err) {
       console.error("Geocode error:", err);
-      alert("Ошибка при попытке получить координаты");
+      alert(err.message || "Ошибка при попытке получить координаты");
     } finally {
       setImporting?.(false);
     }
@@ -147,14 +167,38 @@ export default function CreateListing({ city }) {
     setError("");
     setSuccess(false);
 
-    if (!formData.title || !formData.price || !formData.city) {
-      setError("Пожалуйста, заполните обязательные поля.");
+    if (!formData.title || !formData.price || !formData.city || !formData.address) {
+      setError("Пожалуйста, заполните обязательные поля: название, цену, город и адрес.");
       return;
     }
 
     setLoading(true);
     try {
       const imageUrls = await uploadImages();
+
+      // Получаем координаты через Яндекс Геокодер, если нет lat/lng
+      if (formData.address && (!formData.lat || !formData.lng)) {
+        const response = await fetch(
+          `https://geocode-maps.yandex.ru/1.x/?apikey=${process.env.NEXT_PUBLIC_YANDEX_API_KEY}&format=json&geocode=${encodeURIComponent(
+            formData.address
+          )}`
+        );
+        const data = await response.json();
+
+        if (
+          data.response &&
+          data.response.GeoObjectCollection.featureMember.length > 0
+        ) {
+          const pos =
+            data.response.GeoObjectCollection.featureMember[0].GeoObject.Point.pos;
+          const [lon, lat] = pos.split(" ").map(Number);
+          formData.lat = lat;
+          formData.lng = lon;
+        }
+      }
+
+      // Готовим coordinates для сохранения
+      const coordinates = formData.lat && formData.lng ? [formData.lat, formData.lng] : null;
 
       const { error } = await supabase.from("listings").insert([
         {
@@ -163,6 +207,7 @@ export default function CreateListing({ city }) {
           totalSpots: Number(formData.totalSpots) || 0,
           filledSpots: Number(formData.filledSpots) || 0,
           image_urls: imageUrls.length ? imageUrls : previews,
+          coordinates, // Добавляем coordinates как [lat, lng]
           user_id: user.id,
         },
       ]);
@@ -395,13 +440,9 @@ export default function CreateListing({ city }) {
           </div>
 
           {formData.lat && formData.lng && (
-            <iframe
-              src={`https://yandex.ru/map-widget/v1/?ll=${formData.lng},${formData.lat}&z=16`}
-              width="100%"
-              height="220"
-              allowFullScreen
-              className="rounded-xl mt-3 border border-gray-200"
-            />
+            <div className="mt-3">
+              <MapView coordinates={[formData.lat, formData.lng]} />
+            </div>
           )}
         </div>
 

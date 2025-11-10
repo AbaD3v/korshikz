@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
+import ListingMap from "/components/ListingMap";
 
 export default function Listings({ selectedCity }) {
   const [listings, setListings] = useState([]);
@@ -9,6 +10,7 @@ export default function Listings({ selectedCity }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const [filters, setFilters] = useState({
     minPrice: "",
     maxPrice: "",
@@ -193,64 +195,100 @@ export default function Listings({ selectedCity }) {
           Ничего не найдено 😕
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map((listing) => {
-            let images = [];
-            try {
-              if (Array.isArray(listing.image_urls)) images = listing.image_urls;
-              else if (listing.image_urls && typeof listing.image_urls === "string") {
-                images = listing.image_urls
-                  .replace(/[{}"]/g, "")
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean);
-              } else if (listing.image_url) images = [listing.image_url];
-            } catch (e) {
-              console.warn("Ошибка парсинга image_urls:", e);
-            }
-            if (!images.length) images = ["/no-image.png"];
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Левая колонка со списком */}
+            <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {filtered.map((listing) => {
+                  let images = [];
+                  try {
+                    if (Array.isArray(listing.image_urls)) images = listing.image_urls;
+                    else if (listing.image_urls && typeof listing.image_urls === "string") {
+                      images = listing.image_urls
+                        .replace(/[{}"]/g, "")
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                    } else if (listing.image_url) images = [listing.image_url];
+                  } catch (e) {
+                    console.warn("Ошибка парсинга image_urls:", e);
+                  }
+                  if (!images.length) images = ["/no-image.png"];
 
-            return (
-              <motion.div
-                key={listing.id}
-                className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all cursor-pointer"
-                whileHover={{ scale: 1.02 }}
-                onClick={() => router.push(`/listings/${listing.id}`)}
-              >
-                <div className="relative w-full h-60 bg-gray-100 dark:bg-gray-800">
-                  <img
-                    src={images[0]}
-                    alt={listing.title}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                  />
-                  {images.length > 1 && (
-                    <span className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-md">
-                      +{images.length - 1} фото
-                    </span>
-                  )}
-                </div>
+                  return (
+                    <motion.div
+                      key={listing.id}
+                      className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all cursor-pointer"
+                      whileHover={{ scale: 1.02 }}
+                      onClick={() => router.push(`/listings/${listing.id}`)}
+                    >
+                      <div className="relative w-full h-60 bg-gray-100 dark:bg-gray-800">
+                        <img
+                          src={images[0]}
+                          alt={listing.title}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                        {images.length > 1 && (
+                          <span className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-md">
+                            +{images.length - 1} фото
+                          </span>
+                        )}
+                      </div>
 
-                <div className="p-4 space-y-2">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white line-clamp-2">
-                    {listing.title}
-                  </h2>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-3">
-                    {listing.description || "Без описания"}
-                  </p>
-                  <div className="flex items-center justify-between mt-3">
-                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                      {listing.price ? `${listing.price.toLocaleString()} ₸` : "Договорная"}
-                    </span>
-                    <span className="text-gray-500 dark:text-gray-400 text-sm flex items-center gap-1">
-                      📍 {listing.city}
-                    </span>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
+                      <div className="p-4 space-y-2">
+                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white line-clamp-2">
+                          {listing.title}
+                        </h2>
+                        <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-3">
+                          {listing.description || "Без описания"}
+                        </p>
+                        <div className="flex items-center justify-between mt-3">
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                            {listing.price ? `${listing.price.toLocaleString()} ₸` : "Договорная"}
+                          </span>
+                          <span className="text-gray-500 dark:text-gray-400 text-sm flex items-center gap-1">
+                            📍 {listing.city}
+                          </span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Правая колонка с картой (десктоп) */}
+            <div className="hidden lg:block sticky top-24 h-[80vh]">
+              <ListingMap listings={filtered} />
+            </div>
+          </div>
+
+          {/* Кнопка показа карты для мобильных */}
+          <button
+            onClick={() => setShowMap(!showMap)}
+            className="lg:hidden fixed bottom-6 right-6 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2"
+          >
+            <span className="text-xl">📍</span>
+            {showMap ? "Скрыть карту" : "Показать на карте"}
+          </button>
+
+          {/* Мобильная карта */}
+          {showMap && (
+            <div className="lg:hidden fixed inset-0 bg-white dark:bg-gray-900 z-40">
+              <div className="h-full relative">
+                <ListingMap listings={filtered} />
+                <button
+                  onClick={() => setShowMap(false)}
+                  className="absolute top-4 right-4 bg-white dark:bg-gray-800 text-gray-800 dark:text-white px-4 py-2 rounded-full shadow-lg"
+                >
+                  ✕ Закрыть
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

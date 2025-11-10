@@ -2,6 +2,7 @@ import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { motion } from "framer-motion";
+import MapView from "/components/MapView";
 
 export default function ListingDetail() {
   const router = useRouter();
@@ -134,6 +135,15 @@ export default function ListingDetail() {
                 {listing.filledSpots || 0} / {listing.totalSpots || "?"}
               </p>
             </div>
+          )}
+
+          {(listing.address || (listing.lat && listing.lng)) && (
+            <MapView 
+              address={listing.address}
+              coordinates={listing.lat && listing.lng ? [listing.lat, listing.lng] : undefined}
+              height="350px"
+              showCard={true}
+            />
           )}
 
           <motion.button

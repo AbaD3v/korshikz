@@ -1,11 +1,16 @@
+// pages/api/geocode.js
 // GET ?address=string or POST { address: string } -> { coordinates: [lat, lng] } or 404/400
 export default async function handler(req, res) {
   const address = req.method === "POST" ? req.body?.address : req.query?.address;
   if (!address || typeof address !== "string" || !address.trim()) {
     return res.status(400).json({ error: "Address required" });
-  }
 
   try {
+    const { address } = req.body || {};
+    if (!address || typeof address !== "string" || !address.trim()) {
+      return res.status(400).json({ error: "Address required" });
+    }
+
     const apiKey = process.env.YANDEX_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: "Geocode API key not configured" });
@@ -24,16 +29,16 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: "Address not found" });
     }
 
-    // Yandex returns "lng lat", but we want [lat, lng]
-    const [lng, lat] = pos.split(" ").map(Number);
+    // Yandex returns "lng lat"
+    const [lngStr, latStr] = pos.split(" ");
+    const lat = Number(latStr);
+    const lng = Number(lngStr);
 
     if (!isFinite(lat) || !isFinite(lng)) {
       return res.status(500).json({ error: "Invalid coordinates returned" });
     }
 
-    return res.status(200).json({
-      coordinates: [lat, lng]
-    });
+    return res.status(200).json({ lat, lng });
   } catch (err) {
     console.error("geocode error:", err);
     return res.status(500).json({ error: "Internal server error", details: String(err.message || err) });
