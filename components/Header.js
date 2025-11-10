@@ -82,7 +82,7 @@ export default function Header({ theme, setTheme, city, setCity }) {
             <div className="flex gap-2">
               <Link
                 href="/auth/login"
-                className="flex items-center gap-1 bg-primary text-white px-3 py-1 rounded-xl hover:bg-primary-dark transition"
+                className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1 rounded-xl hover:bg-blue-700 transition"
               >
                 <LogIn size={16} /> Войти
               </Link>
@@ -121,7 +121,13 @@ export default function Header({ theme, setTheme, city, setCity }) {
               </button>
             ) : (
               <>
-                <Link href="/auth/login" onClick={() => setOpen(false)}>Войти</Link>
+                <Link
+                  href="/auth/login"
+                  onClick={() => setOpen(false)}
+                  className="bg-blue-600 text-white px-3 py-1 rounded-xl"
+                >
+                  Войти
+                </Link>
                 <Link href="/auth/register" onClick={() => setOpen(false)}>Регистрация</Link>
               </>
             )}
