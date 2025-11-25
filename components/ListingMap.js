@@ -66,7 +66,7 @@ const ListingMap = ({ listings }) => {
   return (
     <div
       ref={mapRef}
-      className="w-full h-[600px] rounded-2xl shadow-md border border-gray-200 dark:border-gray-700"
+      className="w-full h-full rounded-2xl shadow-md border border-gray-200 dark:border-gray-700"
     />
   );
 };

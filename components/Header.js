@@ -1,22 +1,115 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
+import ProfileButton from "./ProfileButton";
 import { Moon, Sun, Menu, X, LogOut, UserPlus, LogIn } from "lucide-react";
 
 export default function Header({ theme, setTheme, city, setCity }) {
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const router = useRouter();
 
   useEffect(() => {
     const fetchUser = async () => {
       const { data } = await supabase.auth.getUser();
-      setUser(data?.user || null);
+      const authUser = data?.user || null;
+      setUser(authUser);
+
+      console.log("Header.fetchUser: currentUser=", authUser);
+      if (authUser) {
+        try {
+          console.log("Header.fetchUser: fetching profile for id=", authUser.id);
+          const { data: p, error: pErr } = await supabase
+            .from("profiles")
+            .select("id, username, avatar_url, isOnboarded")
+            .eq("id", authUser.id)
+            .maybeSingle();
+          console.log("Header.fetchUser: profile result", p, pErr);
+          if (pErr) console.error("Header.fetchUser error:", pErr);
+
+          if (!p) {
+            // profile not found — create a stub profile with isOnboarded = false
+            try {
+              console.log("Header.fetchUser: profile not found, creating for id=", authUser.id);
+              const { data: created, error: createErr } = await supabase
+                .from("profiles")
+                .insert([{ id: authUser.id, isOnboarded: false }])
+                .select()
+                .maybeSingle();
+              console.log("Header.fetchUser: created profile", created, createErr);
+              if (createErr) console.error("Header.fetchUser create error:", createErr);
+              setProfile(created || { id: authUser.id, isOnboarded: false });
+              // redirect to onboarding if not already there
+              if (router && router.pathname !== "/onboarding") router.push(`/onboarding`);
+            } catch (createEx) {
+              console.error("Header.fetchUser create exception:", createEx);
+            }
+          } else {
+            setProfile(p || null);
+            // if profile exists but not onboarded — redirect
+            if (p && p.isOnboarded === false) {
+              if (router && router.pathname !== "/onboarding") router.push(`/onboarding`);
+            }
+          }
+        } catch (err) {
+          console.error("Header.fetchUser exception:", err);
+          setProfile(null);
+        }
+      } else {
+        setProfile(null);
+      }
     };
     fetchUser();
 
     // следим за изменением состояния авторизации
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
+      const authUser = session?.user || null;
+      console.log("onAuthStateChange: currentUser=", authUser);
+      setUser(authUser);
+      if (authUser) {
+        (async () => {
+          try {
+            console.log("onAuthStateChange: fetching profile for id=", authUser.id);
+            const { data: p, error: pErr } = await supabase
+              .from("profiles")
+              .select("id, username, avatar_url, isOnboarded")
+              .eq("id", authUser.id)
+              .maybeSingle();
+            console.log("onAuthStateChange: profile result", p, pErr);
+            if (pErr) console.error("onAuthStateChange profile error:", pErr);
+
+            if (!p) {
+              // create profile stub if missing
+              try {
+                console.log("onAuthStateChange: profile not found, creating for id=", authUser.id);
+                const { data: created, error: createErr } = await supabase
+                  .from("profiles")
+                  .insert([{ id: authUser.id, isOnboarded: false }])
+                  .select()
+                  .maybeSingle();
+                console.log("onAuthStateChange: created profile", created, createErr);
+                if (createErr) console.error("onAuthStateChange create error:", createErr);
+                setProfile(created || { id: authUser.id, isOnboarded: false });
+                if (router && router.pathname !== "/onboarding") router.push(`/onboarding`);
+              } catch (createEx) {
+                console.error("onAuthStateChange create exception:", createEx);
+              }
+            } else {
+              setProfile(p || null);
+              if (p && p.isOnboarded === false) {
+                if (router && router.pathname !== "/onboarding") router.push(`/onboarding`);
+              }
+            }
+          } catch (err) {
+            console.error("onAuthStateChange exception:", err);
+            setProfile(null);
+          }
+        })();
+      } else {
+        setProfile(null);
+      }
     });
 
     return () => listener.subscription.unsubscribe();
@@ -71,13 +164,16 @@ export default function Header({ theme, setTheme, city, setCity }) {
 
           {/* Авторизация */}
           {user ? (
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1 bg-red-500 text-white px-3 py-1 rounded-xl hover:bg-red-600 transition"
-            >
-              <LogOut size={16} />
-              Выйти
-            </button>
+            <div className="flex items-center gap-2">
+              <ProfileButton user={profile ?? { id: user?.id, username: user?.email ?? 'User', avatar_url: null }} />
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1 bg-red-500 text-white px-3 py-1 rounded-xl hover:bg-red-600 transition"
+              >
+                <LogOut size={16} />
+                Выйти
+              </button>
+            </div>
           ) : (
             <div className="flex gap-2">
               <Link

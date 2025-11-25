@@ -148,14 +148,17 @@ export default function CreateListing({ city }) {
     for (let i = 0; i < images.length; i++) {
       const file = images[i];
       const safeName = `${Date.now()}-${sanitizeFileName(file.name)}`;
+      // include user id in the storage path so RLS policies expecting owner = auth.uid() work
+      const filePath = `${user.id}/${safeName}`;
+      console.log("uploadImages: uploading file as", filePath, "current user id:", user.id);
       const { error } = await supabase.storage
         .from("listings")
-        .upload(safeName, file, { cacheControl: "3600", upsert: false });
+        .upload(filePath, file, { cacheControl: "3600", upsert: false });
       if (error) throw error;
 
       const { data: urlData } = await supabase.storage
         .from("listings")
-        .getPublicUrl(safeName);
+        .getPublicUrl(filePath);
       urls.push(urlData?.publicUrl);
       setProgress(Math.round(((i + 1) / images.length) * 100));
     }

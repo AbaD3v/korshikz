@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 import { motion } from "framer-motion";
+
 import ListingMap from "/components/ListingMap";
 import ListingCard from "/components/ListingCard";
 
-/* =============================
-   Хелперы
-   ============================= */
+/* ==========================================
+    UTILS
+========================================== */
+
 function useDebounced(value, delay = 350) {
   const [v, setV] = useState(value);
   useEffect(() => {
@@ -17,123 +19,145 @@ function useDebounced(value, delay = 350) {
   return v;
 }
 
-function formatPrice(n) {
-  if (n == null) return "";
-  return `${Number(n).toLocaleString("ru-RU")} ₸`;
-}
+const formatPrice = (n) =>
+  n == null ? "" : `${Number(n).toLocaleString("ru-RU")} ₸`;
 
-/* =============================
-   Основной компонент
-   ============================= */
+/* ==========================================
+    MAIN PAGE
+========================================== */
+
 export default function Listings({ selectedCity }) {
   const router = useRouter();
 
+  /* DATA */
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  /* SEARCH */
   const [search, setSearch] = useState("");
-  const debouncedSearch = useDebounced(search, 350);
+  const debouncedSearch = useDebounced(search);
 
+  /* FILTERS */
+  const priceBoundsRef = useRef({ min: 0, max: 300000 });
   const [priceMin, setPriceMin] = useState(0);
   const [priceMax, setPriceMax] = useState(200000);
-  const priceBoundsRef = useRef({ min: 0, max: 200000 });
 
   const [rooms, setRooms] = useState([]);
   const [types, setTypes] = useState([]);
   const [amenities, setAmenities] = useState([]);
   const [nearMetro, setNearMetro] = useState(false);
+
   const [geoEnabled, setGeoEnabled] = useState(false);
   const [radius, setRadius] = useState("5");
-
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [sort, setSort] = useState("newest");
-  const [showMap, setShowMap] = useState(false);
-
   const [userCoords, setUserCoords] = useState(null);
 
-  const activeFiltersCount = useMemo(() => {
+  const [sort, setSort] = useState("newest");
+
+  /* MOBILE FILTERS */
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+
+  /* ACTIVE FILTERS COUNT */
+  const activeFilters = useMemo(() => {
     let c = 0;
     if (debouncedSearch.trim()) c++;
-    if ((priceMin || priceMax) && !(priceMin === 0 && priceMax === priceBoundsRef.current.max)) c++;
     if (rooms.length) c++;
     if (types.length) c++;
     if (amenities.length) c++;
     if (nearMetro) c++;
-    if (geoEnabled && radius && radius !== "5") c++;
+    if (geoEnabled) c++;
+    if (priceMin !== 0 || priceMax !== priceBoundsRef.current.max) c++;
     return c;
-  }, [debouncedSearch, priceMin, priceMax, rooms, types, amenities, nearMetro, geoEnabled, radius]);
+  }, [debouncedSearch, rooms, types, amenities, nearMetro, geoEnabled, priceMin, priceMax]);
 
+  /* INIT PRICE BOUNDS */
   useEffect(() => {
-    const min = 0;
-    const max = 300000;
-    priceBoundsRef.current = { min, max };
-    setPriceMin(min);
+    priceBoundsRef.current = { min: 0, max: 300000 };
+    setPriceMin(0);
     setPriceMax(200000);
   }, []);
 
+  /* GEO LOCATION */
   useEffect(() => {
     if (!geoEnabled) {
       setUserCoords(null);
       return;
     }
-    navigator.geolocation.getCurrentPosition(pos => {
+    navigator.geolocation.getCurrentPosition((pos) => {
       setUserCoords([pos.coords.latitude, pos.coords.longitude]);
     });
   }, [geoEnabled]);
 
-  const buildSupabaseQuery = async () => {
+  /* SUPABASE QUERY BUILDER */
+  const buildQuery = async () => {
     let q = supabase.from("listings").select("*");
 
     if (selectedCity) q = q.eq("city", selectedCity);
 
-    if (debouncedSearch?.trim()) {
+    if (debouncedSearch.trim()) {
       const like = `%${debouncedSearch.trim()}%`;
       q = q.or(`title.ilike.${like},description.ilike.${like}`);
     }
 
-    if (priceMin != null) q = q.gte("price", priceMin);
-    if (priceMax != null) q = q.lte("price", priceMax);
+    q = q.gte("price", priceMin).lte("price", priceMax);
 
     if (rooms.length) q = q.in("rooms", rooms);
     if (types.length) q = q.in("property_type", types);
     if (amenities.length) q = q.contains("amenities", amenities);
+
     if (nearMetro) q = q.eq("near_metro", true);
 
     if (sort === "price-asc") q = q.order("price", { ascending: true });
     else if (sort === "price-desc") q = q.order("price", { ascending: false });
     else q = q.order("id", { ascending: false });
 
-    q = q.limit(100);
-    return q;
+    return q.limit(200);
   };
 
+  /* FETCH */
   useEffect(() => {
     let mounted = true;
-    const fetch = async () => {
+
+    const load = async () => {
       setLoading(true);
       try {
-        const q = await buildSupabaseQuery();
+        const q = await buildQuery();
         const { data, error } = await q;
+
         if (error) throw error;
-        if (!mounted) return;
-        setListings(data || []);
-      } catch (e) {
-        console.error("Ошибка загрузки:", e.message || e);
+        if (mounted) setListings(data || []);
+      } catch (err) {
+        console.error("Load error:", err.message);
       } finally {
         if (mounted) setLoading(false);
       }
     };
-    fetch();
-    return () => { mounted = false; };
-  }, [debouncedSearch, priceMin, priceMax, rooms.join(","), types.join(","), amenities.join(","), nearMetro, geoEnabled, radius, sort, selectedCity]);
 
-  const toggleSet = (arr, setArr, value) => {
-    setArr(prev => prev.includes(value) ? prev.filter(x => x !== value) : [...prev, value]);
-  };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [
+    debouncedSearch,
+    priceMin,
+    priceMax,
+    rooms.join(","),
+    types.join(","),
+    amenities.join(","),
+    nearMetro,
+    geoEnabled,
+    radius,
+    sort,
+    selectedCity,
+  ]);
+
+  /* FILTER HELPERS */
+  const toggleSet = (arr, setArr, val) =>
+    setArr((p) => (p.includes(val) ? p.filter((x) => x !== val) : [...p, val]));
 
   const resetFilters = () => {
     setSearch("");
-    setPriceMin(priceBoundsRef.current.min);
+    setPriceMin(0);
     setPriceMax(priceBoundsRef.current.max);
     setRooms([]);
     setTypes([]);
@@ -142,291 +166,363 @@ export default function Listings({ selectedCity }) {
     setGeoEnabled(false);
     setRadius("5");
     setSort("newest");
-    setMobileFiltersOpen(false);
   };
 
-  const applyFiltersToUrl = () => {
-    const qp = {};
-    if (search.trim()) qp.q = search.trim();
-    if (priceMin !== priceBoundsRef.current.min) qp.pmin = priceMin;
-    if (priceMax !== priceBoundsRef.current.max) qp.pmax = priceMax;
-    if (rooms.length) qp.rooms = rooms.join(",");
-    if (types.length) qp.type = types.join(",");
-    if (amenities.length) qp.am = amenities.join(",");
-    if (nearMetro) qp.metro = "1";
-    if (geoEnabled && radius && radius !== "5") qp.r = radius;
-    if (sort && sort !== "newest") qp.sort = sort;
-    router.replace({ pathname: router.pathname, query: { ...router.query, ...qp } }, undefined, { shallow: true });
+  const applyUrlFilters = () => {
+    const q = {};
+
+    if (search.trim()) q.q = search;
+    if (rooms.length) q.rooms = rooms.join(",");
+    if (types.length) q.types = types.join(",");
+    if (amenities.length) q.am = amenities.join(",");
+
+    router.replace({ pathname: router.pathname, query: q }, undefined, { shallow: true });
   };
+
+  /* ==========================================
+      RENDER
+  =========================================== */
 
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-8">
-      {/* Заголовок + поиск + сортировка */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+    <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-16">
+
+      {/* TOP BAR */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-8 mb-6">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
           Объявления {selectedCity ? `в ${selectedCity}` : ""}
         </h1>
 
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+
           <input
             type="text"
             placeholder="🔍 Поиск..."
-            className="w-full sm:w-72 px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            className="w-full sm:w-72 px-3 py-2 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:text-white"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
 
-          <div className="flex gap-2 mt-2 sm:mt-0">
-            <button
-              onClick={() => setSort("newest")}
-              className={`px-4 py-2 rounded-lg border transition ${sort==="newest"?"bg-emerald-600 text-white":"bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"}`}
-            >
-              Новые
-            </button>
-            <button
-              onClick={() => setSort("price-asc")}
-              className={`px-4 py-2 rounded-lg border transition ${sort==="price-asc"?"bg-emerald-600 text-white":"bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"}`}
-            >
-              ↑ Цена
-            </button>
-            <button
-              onClick={() => setSort("price-desc")}
-              className={`px-4 py-2 rounded-lg border transition ${sort==="price-desc"?"bg-emerald-600 text-white":"bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"}`}
-            >
-              ↓ Цена
-            </button>
+          <div className="flex gap-2">
+            <SortButton active={sort === "newest"} onClick={() => setSort("newest")}>Новые</SortButton>
+            <SortButton active={sort === "price-asc"} onClick={() => setSort("price-asc")}>↑ Цена</SortButton>
+            <SortButton active={sort === "price-desc"} onClick={() => setSort("price-desc")}>↓ Цена</SortButton>
           </div>
         </div>
       </div>
 
-      {/* Сетка: фильтры / список / карта */}
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr_420px] gap-6">
-        {/* Desktop Filters */}
-        <div className="hidden lg:block">
-          <div className="sticky top-24">
-            <FiltersPanel
-              priceMin={priceMin} priceMax={priceMax} setPriceMin={setPriceMin} setPriceMax={setPriceMax} priceBounds={priceBoundsRef.current}
-              rooms={rooms} toggleRooms={(v)=>toggleSet(rooms, setRooms, v)}
-              types={types} toggleTypes={(v)=>toggleSet(types, setTypes, v)}
-              amenities={amenities} toggleAmenities={(v)=>toggleSet(amenities, setAmenities, v)}
-              nearMetro={nearMetro} setNearMetro={setNearMetro}
-              geoEnabled={geoEnabled} setGeoEnabled={setGeoEnabled}
-              radius={radius} setRadius={setRadius}
-              onReset={resetFilters} onApply={applyFiltersToUrl}
-            />
-          </div>
-        </div>
+      {/* GRID LAYOUT */}
+      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr_480px] gap-8">
 
-        {/* Список */}
+        {/* LEFT FILTERS */}
+        <aside className="hidden lg:block">
+  <div className="sticky top-24 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 shadow-xl space-y-6">
+            <Filters
+              priceMin={priceMin}
+              priceMax={priceMax}
+              setPriceMin={setPriceMin}
+              setPriceMax={setPriceMax}
+              bounds={priceBoundsRef.current}
+              rooms={rooms}
+              types={types}
+              amenities={amenities}
+              radius={radius}
+              nearMetro={nearMetro}
+              geo={geoEnabled}
+              toggleSet={toggleSet}
+              setNearMetro={setNearMetro}
+              setTypes={setTypes}
+              setRooms={setRooms}
+              setAmenities={setAmenities}
+              setRadius={setRadius}
+              setGeo={setGeoEnabled}
+              apply={applyUrlFilters}
+              reset={resetFilters}
+            />
+
+          </div>
+        </aside>
+
+        {/* LISTINGS */}
         <main>
           {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="animate-pulse bg-white dark:bg-gray-800 rounded-2xl h-72" />
-              ))}
-            </div>
+            <ListingSkeleton />
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-              {listings.map(listing => (
-                <ListingCard key={listing.id} listing={listing} onClick={()=>router.push(`/listings/${listing.id}`)} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 items-stretch">
+              {listings.map((l) => (
+                <ListingCard
+                  key={l.id}
+                  listing={l}
+                  onClick={() => router.push(`/listings/${l.id}`)}
+                />
               ))}
             </div>
           )}
         </main>
 
-        {/* Map (desktop) */}
-        <div className="hidden lg:block">
-          <div className="sticky top-24 rounded-2xl overflow-hidden shadow-xl h-[70vh]">
+        {/* MAP */}
+        <aside className="hidden lg:block">
+          <div className="sticky top-24 h-[calc(100vh-6rem)] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden shadow-2xl">
             <ListingMap listings={listings} userCoords={userCoords} />
           </div>
-        </div>
+        </aside>
       </div>
-
-      {/* Mobile map toggle */}
-      <button
-        onClick={() => setShowMap(true)}
-        className="lg:hidden fixed bottom-6 right-6 bg-emerald-600 text-white px-4 py-2 rounded-full shadow-lg z-50 flex items-center gap-2"
-      >
-        <span className="text-xl">📍</span> Показать карту
-      </button>
-
-      {showMap && (
-        <div className="lg:hidden fixed inset-0 z-40 bg-white dark:bg-gray-900">
-          <ListingMap listings={listings} userCoords={userCoords} />
-          <button
-            onClick={() => setShowMap(false)}
-            className="absolute top-4 right-4 bg-white dark:bg-gray-800 text-gray-800 dark:text-white px-4 py-2 rounded-full shadow-lg"
-          >
-            ✕ Закрыть
-          </button>
-        </div>
-      )}
-
-      {/* Mobile drawer */}
-      {mobileFiltersOpen && (
-        <MobileFiltersDrawer
-          priceMin={priceMin} priceMax={priceMax} setPriceMin={setPriceMin} setPriceMax={setPriceMax} priceBounds={priceBoundsRef.current}
-          rooms={rooms} toggleRooms={(v)=>toggleSet(rooms, setRooms, v)}
-          types={types} toggleTypes={(v)=>toggleSet(types, setTypes, v)}
-          amenities={amenities} toggleAmenities={(v)=>toggleSet(amenities, setAmenities, v)}
-          nearMetro={nearMetro} setNearMetro={setNearMetro}
-          geoEnabled={geoEnabled} setGeoEnabled={setGeoEnabled}
-          radius={radius} setRadius={setRadius}
-          onClose={()=>setMobileFiltersOpen(false)}
-          onReset={resetFilters}
-          onApply={()=>{ applyFiltersToUrl(); setMobileFiltersOpen(false); }}
-        />
-      )}
     </div>
   );
 }
 
-/* ============================================================================
-   FiltersPanel
-   ============================================================================ */
-function FiltersPanel({ priceMin, priceMax, setPriceMin, setPriceMax, priceBounds,
-  rooms, toggleRooms, types, toggleTypes, amenities, toggleAmenities,
-  nearMetro, setNearMetro, geoEnabled, setGeoEnabled, radius, setRadius,
-  onReset, onApply }) {
+/* ==========================================
+    COMPONENTS
+========================================== */
 
-  const roomOptions = [1,2,3,4];
-  const typeOptions = [
-    { id: "apartment", label: "Квартира" },
-    { id: "house", label: "Дом" },
-    { id: "studio", label: "Студия" },
-  ];
-  const amenOptions = [
-    { id: "parking", label: "Парковка" },
-    { id: "furniture", label: "Мебель" },
-    { id: "elevator", label: "Лифт" },
-    { id: "balcony", label: "Балкон" },
-  ];
-  const radiusOptions = ["1","3","5","10","20"];
-
-  const onChangeMin = (v) => {
-    const num = Number(v || 0);
-    const maxAllowed = Math.max(priceBounds.min, priceMax);
-    setPriceMin(Math.min(Math.max(priceBounds.min, num), priceBounds.max, maxAllowed));
-  };
-  const onChangeMax = (v) => {
-    const num = Number(v || 0);
-    const minAllowed = Math.min(priceBounds.max, priceMin);
-    setPriceMax(Math.max(Math.min(priceBounds.max, num), priceBounds.min, minAllowed));
-  };
-
+function SortButton({ active, onClick, children }) {
   return (
-    <div className="space-y-4">
-      {/* Price */}
-      <div>
-        <div className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Цена</div>
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 rounded-lg border transition ${
+        active
+          ? "bg-emerald-600 text-white"
+          : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ListingSkeleton() {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div className="animate-pulse bg-white dark:bg-gray-800 rounded-2xl h-[340px] shadow-sm border border-gray-100 dark:border-gray-700" />
+      ))}
+    </div>
+  );
+}
+
+/* ==========================================
+    FILTERS PANEL
+========================================== */
+
+function Filters({
+  priceMin,
+  priceMax,
+  setPriceMin,
+  setPriceMax,
+  bounds,
+  rooms,
+  types,
+  amenities,
+  radius,
+  nearMetro,
+  geo,
+  toggleSet,
+  setNearMetro,
+  setTypes,
+  setRooms,
+  setAmenities,
+  setRadius,
+  setGeo,
+  apply,
+  reset,
+}) {
+  return (
+    <div className="space-y-6 text-gray-800 dark:text-gray-200">
+
+      {/* PRICE */}
+      <section>
+        <Label>Цена</Label>
         <div className="flex gap-2 items-center">
-          <input type="number" value={priceMin} onChange={(e)=>onChangeMin(e.target.value)} className="w-1/2 px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 text-sm" />
-          <input type="number" value={priceMax} onChange={(e)=>onChangeMax(e.target.value)} className="w-1/2 px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 text-sm" />
+          <Input
+            type="number"
+            value={priceMin}
+            onChange={(e) => setPriceMin(Number(e.target.value))}
+          />
+          <Input
+            type="number"
+            value={priceMax}
+            onChange={(e) => setPriceMax(Number(e.target.value))}
+          />
         </div>
-        <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+        <Hint>
           От {formatPrice(priceMin)} до {formatPrice(priceMax)}
-        </div>
-      </div>
+        </Hint>
+      </section>
 
-      {/* Rooms */}
-      <div>
-        <div className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Комнаты</div>
+      {/* ROOMS */}
+      <section>
+        <Label>Комнаты</Label>
         <div className="flex flex-wrap gap-2">
-          {roomOptions.map(r => (
-            <button key={r} onClick={()=>toggleRooms(r)} className={`px-3 py-1 rounded-md text-sm border ${rooms.includes(r) ? "bg-emerald-600 text-white" : "bg-white dark:bg-gray-800"}`}>{r}</button>
+          {[1, 2, 3, 4].map((r) => (
+            <Tag
+              key={r}
+              active={rooms.includes(r)}
+              onClick={() => toggleSet(rooms, setRooms, r)}
+            >
+              {r}
+            </Tag>
           ))}
-          <button onClick={()=>toggleRooms("4+")} className={`px-3 py-1 rounded-md text-sm border ${rooms.includes("4+") ? "bg-emerald-600 text-white" : "bg-white dark:bg-gray-800"}`}>4+</button>
+          <Tag
+            active={rooms.includes("4+")}
+            onClick={() => toggleSet(rooms, setRooms, "4+")}
+          >
+            4+
+          </Tag>
         </div>
-      </div>
+      </section>
 
-      {/* Types */}
-      <div>
-        <div className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Тип жилья</div>
-        <div className="flex flex-col gap-2">
-          {typeOptions.map(t => (
-            <label key={t.id} className="inline-flex items-center gap-2">
-              <input type="checkbox" checked={types.includes(t.id)} onChange={()=>toggleTypes(t.id)} className="form-checkbox" />
-              <span className="text-sm">{t.label}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+      {/* TYPES */}
+      <section>
+        <Label>Тип жилья</Label>
+        <CheckList
+          list={[
+            ["apartment", "Квартира"],
+            ["house", "Дом"],
+            ["studio", "Студия"],
+          ]}
+          active={types}
+          toggle={(id) => toggleSet(types, setTypes, id)}
+        />
+      </section>
 
-      {/* Amenities */}
-      <div>
-        <div className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Удобства</div>
+      {/* AMENITIES */}
+      <section>
+        <Label>Удобства</Label>
         <div className="flex flex-wrap gap-2">
-          {amenOptions.map(a => (
-            <button key={a.id} onClick={()=>toggleAmenities(a.id)} className={`px-3 py-1 rounded-md text-sm border ${amenities.includes(a.id) ? "bg-emerald-600 text-white" : "bg-white dark:bg-gray-800"}`}>{a.label}</button>
+          {[
+            ["parking", "Парковка"],
+            ["furniture", "Мебель"],
+            ["elevator", "Лифт"],
+            ["balcony", "Балкон"],
+          ].map(([id, label]) => (
+            <Tag
+              key={id}
+              active={amenities.includes(id)}
+              onClick={() => toggleSet(amenities, setAmenities, id)}
+            >
+              {label}
+            </Tag>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Near Metro */}
-      <div>
-        <label className="flex items-center justify-between">
-          <div>
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-200">Рядом с метро</div>
-          </div>
-          <input type="checkbox" checked={nearMetro} onChange={e=>setNearMetro(e.target.checked)} className="form-checkbox" />
-        </label>
-      </div>
+      {/* METRO */}
+      <section>
+        <Switch
+          label="Рядом с метро"
+          checked={nearMetro}
+          onChange={(e) => setNearMetro(e.target.checked)}
+        />
+      </section>
 
-      {/* Geo filter */}
-      <div>
-        <label className="flex items-center justify-between">
-          <div>
-            <div className="text-sm font-medium text-gray-700 dark:text-gray-200">Рядом со мной</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">Использовать текущую геопозицию</div>
-          </div>
-          <input type="checkbox" checked={geoEnabled} onChange={e=>setGeoEnabled(e.target.checked)} className="form-checkbox" />
-        </label>
-        {geoEnabled && (
-          <div className="flex gap-2 flex-wrap mt-2">
-            {radiusOptions.map(r => (
-              <button key={r} onClick={()=>setRadius(r)} className={`px-3 py-1 rounded-md text-sm border ${radius===r ? "bg-emerald-600 text-white" : "bg-white dark:bg-gray-800"}`}>{r} км</button>
+      {/* GEO */}
+      <section>
+        <Switch
+          label="Рядом со мной"
+          sub="Использовать геолокацию"
+          checked={geo}
+          onChange={(e) => setGeo(e.target.checked)}
+        />
+
+        {geo && (
+          <div className="flex gap-2 mt-3 flex-wrap">
+            {["1", "3", "5", "10", "20"].map((r) => (
+              <Tag
+                key={r}
+                active={radius === r}
+                onClick={() => setRadius(r)}
+              >
+                {r} км
+              </Tag>
             ))}
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Buttons */}
+      {/* BUTTONS */}
       <div className="pt-2 flex gap-2">
-        <button onClick={onApply} className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg">Применить</button>
-        <button onClick={onReset} className="flex-1 px-4 py-2 border rounded-lg">Сбросить</button>
+        <button className="px-4 py-2 flex-1 bg-emerald-600 rounded-lg" onClick={apply}>
+          Применить
+        </button>
+        <button className="px-4 py-2 flex-1 border rounded-lg" onClick={reset}>
+          Сбросить
+        </button>
       </div>
     </div>
   );
 }
 
-/* ============================================================================
-   MobileFiltersDrawer
-   ============================================================================ */
-function MobileFiltersDrawer({ priceMin, priceMax, setPriceMin, setPriceMax, priceBounds,
-  rooms, toggleRooms, types, toggleTypes, amenities, toggleAmenities,
-  nearMetro, setNearMetro, geoEnabled, setGeoEnabled, radius, setRadius,
-  onClose, onReset, onApply }) {
+/* ==========================================
+    SMALL UI ELEMENTS — FIXED
+========================================== */
 
-  return (
-    <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} className="fixed inset-0 z-50 bg-white dark:bg-gray-900">
-      <div className="p-4 h-full flex flex-col">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Фильтры</h3>
-          <div className="flex items-center gap-2">
-            <button onClick={onReset} className="px-3 py-2 rounded-md text-sm">Сбросить</button>
-            <button onClick={onClose} className="px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-md">Закрыть</button>
-          </div>
-        </div>
+const Label = ({ children }) => (
+  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+    {children}
+  </div>
+);
 
-        <div className="overflow-auto flex-1 space-y-6 pb-6">
-          <FiltersPanel
-            priceMin={priceMin} priceMax={priceMax} setPriceMin={setPriceMin} setPriceMax={setPriceMax} priceBounds={priceBounds}
-            rooms={rooms} toggleRooms={toggleRooms} types={types} toggleTypes={toggleTypes} amenities={amenities} toggleAmenities={toggleAmenities}
-            nearMetro={nearMetro} setNearMetro={setNearMetro} geoEnabled={geoEnabled} setGeoEnabled={setGeoEnabled}
-            radius={radius} setRadius={setRadius} onReset={onReset} onApply={onApply}
-          />
-        </div>
+const Hint = ({ children }) => (
+  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+    {children}
+  </div>
+);
+
+const Input = (props) => (
+  <input
+    {...props}
+    className="
+      w-full px-3 py-2 rounded-lg text-sm 
+      bg-gray-100 border border-gray-300 text-gray-800
+      dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200
+      transition
+    "
+  />
+);
+
+const Tag = ({ active, children, ...props }) => (
+  <button
+    {...props}
+    className={`
+      px-3 py-1 rounded-md text-sm border transition
+      ${active
+        ? "bg-emerald-600 border-emerald-600 text-white"
+        : "bg-gray-100 border-gray-300 text-gray-800 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200"
+      }
+    `}
+  >
+    {children}
+  </button>
+);
+
+const CheckList = ({ list, active, toggle }) => (
+  <div className="flex flex-col gap-2">
+    {list.map(([id, label]) => (
+      <label
+        key={id}
+        className="flex items-center gap-2 cursor-pointer text-gray-800 dark:text-gray-200"
+      >
+        <input
+          type="checkbox"
+          checked={active.includes(id)}
+          onChange={() => toggle(id)}
+        />
+        <span className="text-sm">{label}</span>
+      </label>
+    ))}
+  </div>
+);
+
+const Switch = ({ label, sub, checked, onChange }) => (
+  <label className="flex items-center justify-between cursor-pointer">
+    <div>
+      <div className="text-sm font-medium text-gray-800 dark:text-gray-300">
+        {label}
       </div>
-    </motion.div>
-  );
-}
+      {sub && (
+        <div className="text-xs text-gray-500 dark:text-gray-500">{sub}</div>
+      )}
+    </div>
+
+    <input type="checkbox" checked={checked} onChange={onChange} />
+  </label>
+);
