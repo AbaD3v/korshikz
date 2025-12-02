@@ -1,6 +1,5 @@
 // pages/api/import-krisha.js
-// Robust Krisha importer: tries meta tags, JSON-LD, DOM selectors.
-// Returns: { title, price, city, description, images: [], latitude?, longitude?, meta? }
+// Robust Krisha importer with address extraction
 
 import * as cheerio from "cheerio";
 import { URL } from "url";
@@ -82,6 +81,7 @@ export default async function handler(req, res) {
     let description = "";
     let price = "";
     let city = "";
+    let address = ""; // <<< NEW
     let images = [];
     let latitude = null;
     let longitude = null;
@@ -141,7 +141,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // --- Price extraction ---
+    // --- PRICE EXTRACTION ---
     if (!price) {
       const priceItem = $('[itemprop="price"]').attr("content") || $('[itemprop="price"]').text();
       if (priceItem) price = extractNumberFromString(priceItem);
@@ -170,20 +170,20 @@ export default async function handler(req, res) {
     }
     if (!price) {
       const priceMatch = html.match(/"price"\s*:\s*"?(?<p>[\d\s,]+)"?/i) || html.match(/"price"\s*:\s*(?<p>\d+)/i);
-      if (priceMatch && priceMatch.groups && priceMatch.groups.p) price = priceMatch.groups.p.replace(/\s|,/g, "");
+      if (priceMatch?.groups?.p) price = priceMatch.groups.p.replace(/\s|,/g, "");
     }
 
-    // --- City extraction ---
+    // --- CITY extraction ---
     if (!city) {
       const breadcrumbCandidates = ['.breadcrumbs a', '.crumbs a', '.breadcrumbs__link', '.offer__location a'];
       for (const sel of breadcrumbCandidates) {
         const elems = $(sel);
-        if (elems && elems.length) {
+        if (elems?.length) {
           for (let i = 0; i < elems.length; i++) {
             const txt = $(elems[i]).text().trim();
             if (!txt) continue;
             const low = txt.toLowerCase();
-            if (low.includes('показать') || low.includes('карте') || low.includes('на карте')) continue;
+            if (low.includes('показать') || low.includes('карте')) continue;
             city = txt;
           }
           if (city) break;
@@ -203,25 +203,38 @@ export default async function handler(req, res) {
       }
     }
 
-    // --- Images extraction ---
-    images = images || [];
+    // --- ADDRESS extraction (FULL, WITH HOUSE NUMBER) ---
+    const addressSelectors = [
+      '[data-qa-type="ad-address"]',
+      '.offer__address',
+      '.object-address',
+      '.location'
+    ];
 
-    // Cheerio static extraction
+    for (const sel of addressSelectors) {
+      const txt = $(sel).first().text().trim();
+      if (txt) {
+        address = txt.replace(/Показать на карте/gi, '').trim();
+        break;
+      }
+    }
+
+    // --- IMAGES extraction ---
     $('picture source').each((_, el) => {
       const srcset = $(el).attr('data-srcset') || $(el).attr('srcset');
       if (srcset) {
         const firstSrc = srcset.split(' ')[0];
-        if (firstSrc && firstSrc.startsWith('https')) images.push(firstSrc);
+        if (firstSrc?.startsWith('https')) images.push(firstSrc);
       }
     });
 
     $('img').each((_, el) => {
       const src = $(el).attr('data-src') || $(el).attr('src');
-      if (src && src.startsWith('https') && src.includes('photos.krisha.kz')) images.push(src);
+      if (src?.startsWith('https') && src.includes('photos.krisha.kz')) images.push(src);
     });
 
     // Puppeteer fallback
-    if (!images || images.length === 0) {
+    if (!images?.length) {
       try {
         const executablePath = await chromium.executablePath();
         const browser = await puppeteer.launch({
@@ -252,7 +265,7 @@ export default async function handler(req, res) {
 
         await browser.close();
 
-        if (dynamicImgs && dynamicImgs.length) {
+        if (dynamicImgs?.length) {
           const dynClean = Array.from(new Set(dynamicImgs.map(u => absolutize(u, parsed.origin))))
             .map(u => u.replace(/-\d+x\d+(?=\.\w{3,4}$)/g, '').replace(/\.webp$/i, '.jpg'));
           images = Array.from(new Set([...images, ...dynClean]));
@@ -262,22 +275,14 @@ export default async function handler(req, res) {
       }
     }
 
-    // --- Final cleanups ---
-    if (!title) {
-      const docTitle = $('title').text().trim();
-      if (docTitle) title = docTitle;
-    }
-
     if (price) price = String(price).replace(/\s|,/g, '');
-    if (city) {
-      city = city.replace(/Показать на карте/gi, '').trim();
-      if (city === '') city = null;
-    }
+    if (city) city = city.replace(/Показать на карте/gi, '').trim();
 
     return res.status(200).json({
       title,
       price,
       city,
+      address,    // <<< NEW FIELD RETURNED
       description,
       images,
       latitude,

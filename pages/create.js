@@ -4,6 +4,20 @@ import { supabase } from "../lib/supabaseClient";
 import { sanitizeFileName } from "../lib/sanitizeFileName";
 import MapView from "/components/MapView";
 
+// --- функции для извлечения адреса и города ---
+function extractAddress(title) {
+  if (!title) return "";
+  const afterComma = title.split(",")[1]?.trim() || "";
+  const cleanAddress = afterComma.split("—")[0].trim();
+  return cleanAddress;
+}
+
+function extractCity(cityStr) {
+  if (!cityStr) return "";
+  const match = cityStr.match(/в\s+([А-ЯЁа-яёA-Za-z\s-]+)/);
+  if (match && match[1]) return match[1].trim();
+  return cityStr.trim();
+}
 
 export default function CreateListing({ city }) {
   // --- Hooks ---
@@ -123,12 +137,17 @@ export default function CreateListing({ city }) {
 
       if (!res.ok) throw new Error(data.error || data.message || "Ошибка импорта");
 
+      // --- исправляем адрес и город ---
+      const extractedAddress = extractAddress(data.title);
+      const extractedCity = extractCity(data.city);
+
       setFormData((prev) => ({
         ...prev,
         title: data.title || prev.title,
         description: data.description || prev.description,
         price: data.price || prev.price,
-        city: data.city || prev.city,
+        city: extractedCity || prev.city,
+        address: extractedAddress ? `${extractedAddress}, ${extractedCity}` : prev.address,
       }));
 
       if (Array.isArray(data.images) && data.images.length) {
@@ -148,9 +167,7 @@ export default function CreateListing({ city }) {
     for (let i = 0; i < images.length; i++) {
       const file = images[i];
       const safeName = `${Date.now()}-${sanitizeFileName(file.name)}`;
-      // include user id in the storage path so RLS policies expecting owner = auth.uid() work
       const filePath = `${user.id}/${safeName}`;
-      console.log("uploadImages: uploading file as", filePath, "current user id:", user.id);
       const { error } = await supabase.storage
         .from("listings")
         .upload(filePath, file, { cacheControl: "3600", upsert: false });
@@ -200,7 +217,6 @@ export default function CreateListing({ city }) {
         }
       }
 
-      // Готовим coordinates для сохранения
       const coordinates = formData.lat && formData.lng ? [formData.lat, formData.lng] : null;
 
       const { error } = await supabase.from("listings").insert([
@@ -210,7 +226,7 @@ export default function CreateListing({ city }) {
           totalSpots: Number(formData.totalSpots) || 0,
           filledSpots: Number(formData.filledSpots) || 0,
           image_urls: imageUrls.length ? imageUrls : previews,
-          coordinates, // Добавляем coordinates как [lat, lng]
+          coordinates,
           user_id: user.id,
         },
       ]);
@@ -224,9 +240,9 @@ export default function CreateListing({ city }) {
         totalSpots: "",
         filledSpots: 0,
         city: city || "",
-        address: "",   // добавлено
-        lat: null,     // добавлено
-        lng: null,     // добавлено
+        address: "",
+        lat: null,
+        lng: null,
       });
       setImages([]);
       setPreviews([]);
@@ -250,14 +266,12 @@ export default function CreateListing({ city }) {
         🏠 Создать объявление
       </motion.h1>
 
-      {/* === Форма создания === */}
       <motion.form
         onSubmit={handleSubmit}
         className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 space-y-8 border border-gray-100 dark:border-gray-800"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
       >
-        {/* --- Ошибки и успех --- */}
         {error && (
           <div className="bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 p-3 rounded-lg">
             {error}
@@ -276,10 +290,6 @@ export default function CreateListing({ city }) {
           className="border border-gray-200 dark:border-gray-700 rounded-xl p-5 bg-gray-50 dark:bg-gray-800"
         >
           <h2 className="font-semibold text-lg mb-2">Импортировать с Krisha.kz</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-            Вставьте ссылку — данные и фото загрузятся автоматически. Затем можно
-            их отредактировать.
-          </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
@@ -298,9 +308,7 @@ export default function CreateListing({ city }) {
             </button>
           </div>
           {importError && (
-            <p className="text-red-600 dark:text-red-400 mt-2 text-sm">
-              {importError}
-            </p>
+            <p className="text-red-600 dark:text-red-400 mt-2 text-sm">{importError}</p>
           )}
         </motion.div>
 
@@ -430,7 +438,7 @@ export default function CreateListing({ city }) {
               name="address"
               value={formData.address}
               onChange={handleChange}
-              placeholder="Например: Ахмет Байтурсынулы 5, Астана"
+              placeholder="Например: Ракымжан Кошкарбаев 36, Астана"
               className="flex-1 input"
             />
             <button

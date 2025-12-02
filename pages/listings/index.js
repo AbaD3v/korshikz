@@ -38,9 +38,9 @@ export default function Listings({ selectedCity }) {
   const debouncedSearch = useDebounced(search);
 
   /* FILTERS */
-  const priceBoundsRef = useRef({ min: 0, max: 300000 });
+  const priceBoundsRef = useRef({ min: 0, max: 1000000 });
   const [priceMin, setPriceMin] = useState(0);
-  const [priceMax, setPriceMax] = useState(200000);
+  const [priceMax, setPriceMax] = useState(1000000);
 
   const [rooms, setRooms] = useState([]);
   const [types, setTypes] = useState([]);
@@ -72,9 +72,9 @@ export default function Listings({ selectedCity }) {
 
   /* INIT PRICE BOUNDS */
   useEffect(() => {
-    priceBoundsRef.current = { min: 0, max: 300000 };
+    priceBoundsRef.current = { min: 0, max: 1000000 };
     setPriceMin(0);
-    setPriceMax(200000);
+    setPriceMax(1000000);
   }, []);
 
   /* GEO LOCATION */
@@ -126,6 +126,12 @@ export default function Listings({ selectedCity }) {
 
         if (error) throw error;
         if (mounted) setListings(data || []);
+        if (data) {
+          console.log("Loaded listings:", data);
+          // for quick inspect in console
+          window.__LOADED_LISTINGS__ = data;
+          if (data.length) console.log("First listing:", data[0]);
+        }
       } catch (err) {
         console.error("Load error:", err.message);
       } finally {

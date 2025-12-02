@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import Image from "next/image";
 import Link from "next/link";
+import useUserProfile from "/hooks/useUserProfile"; // ⬅ добавили
 
 export default function ProfileButton({ user }) {
   const [open, setOpen] = useState(false);
@@ -9,9 +10,10 @@ export default function ProfileButton({ user }) {
   const panelRef = useRef(null);
   const router = useRouter();
 
+  const { profile, isProfileIncomplete } = useUserProfile(); // ⬅ добавили
+
   useEffect(() => {
     function onPointerDown(e) {
-      // close when clicking outside
       if (!panelRef.current || !btnRef.current) return;
       if (panelRef.current.contains(e.target) || btnRef.current.contains(e.target)) return;
       setOpen(false);
@@ -53,46 +55,78 @@ export default function ProfileButton({ user }) {
           if (e.key === "ArrowDown") {
             e.preventDefault();
             setOpen(true);
-            // focus first item later if needed
           }
         }}
-        className="inline-flex items-center gap-2 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition">
+        className="inline-flex items-center gap-2 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+      >
         {user?.avatar_url ? (
-          <div className="relative rounded-full overflow-hidden" style={{ width: avatarSize, height: avatarSize }}>
-            <Image src={user.avatar_url} alt={user.username || "avatar"} fill className="object-cover" />
+          <div
+            className="relative rounded-full overflow-hidden"
+            style={{ width: avatarSize, height: avatarSize }}
+          >
+            <Image
+              src={user.avatar_url}
+              alt={user.username || "avatar"}
+              fill
+              className="object-cover"
+            />
           </div>
         ) : (
-          <div className="flex items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium" style={{ width: avatarSize, height: avatarSize }}>
+          <div
+            className="flex items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium"
+            style={{ width: avatarSize, height: avatarSize }}
+          >
             {initials}
           </div>
         )}
 
-        <span className="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-200">{user?.username ?? "Профиль"}</span>
+        <span className="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-200">
+          {user?.username ?? "Профиль"}
+        </span>
       </button>
 
-      {/* Dropdown panel */}
       {open && (
-        <div ref={panelRef} className="origin-top-right absolute right-0 mt-2 w-48 rounded-lg bg-white dark:bg-gray-900 shadow-lg ring-1 ring-black/5 dark:ring-white/10 z-50">
+        <div
+          ref={panelRef}
+          className="origin-top-right absolute right-0 mt-2 w-48 rounded-lg bg-white dark:bg-gray-900 shadow-lg ring-1 ring-black/5 dark:ring-white/10 z-50"
+        >
           <div className="py-1">
+
+            {/* 🔥 КНОПКА "МОЙ ПРОФИЛЬ" */}
+            <button
+              type="button"
+              onClick={async (e) => {
+                e.preventDefault();
+                const target = `/profile/${profile?.id ?? ""}`;
+                const current = router.asPath.split("?")[0];
+                setOpen(false);
+                if (current === target) return;
+                try {
+                  await router.push(target);
+                } catch (err) {
+                  console.error("Navigation error:", err);
+                  alert("Не удалось перейти на страницу профиля. Попробуйте снова.");
+                }
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              Мой профиль
+            </button>
+
+            {/* 🔶 НОВАЯ КНОПКА ЕСЛИ ПРОФИЛЬ НЕ ЗАПОЛНЕН */}
+            {isProfileIncomplete && (
               <button
                 type="button"
-                onClick={async (e) => {
-                  e.preventDefault();
-                  const target = `/profile/${user?.id ?? ""}`;
-                  const current = router.asPath.split("?")[0];
+                onClick={() => {
                   setOpen(false);
-                  if (current === target) return;
-                  try {
-                    await router.push(target);
-                  } catch (err) {
-                    console.error("Navigation error:", err);
-                    alert("Не удалось перейти на страницу профиля. Попробуйте снова.");
-                  }
+                  router.push("/onboarding");
                 }}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="w-full text-left px-4 py-2 text-sm font-medium text-yellow-700 dark:text-yellow-300 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
               >
-                Мой профиль
+                Заполнить профиль
               </button>
+            )}
+
           </div>
         </div>
       )}

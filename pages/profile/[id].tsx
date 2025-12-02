@@ -1,7 +1,14 @@
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import Image from "next/image";
-import { supabase } from "../../lib/supabaseClient";
+import { createClient } from '@supabase/supabase-js';
+
+const createSupabase = (url?: string | undefined, key?: string | undefined) => {
+  if (!url || !key) return null;
+  return createClient(url, key);
+};
+const supabase = createSupabase(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+
 import ListingCard from "../../components/ListingCard";
 // Optional: AvatarUploader component can be used for client-side avatar uploads
 // import AvatarUploader from "../../components/AvatarUploader";
@@ -58,15 +65,27 @@ export default function ProfilePage({ initialProfile, initialListings }: Props) 
 
   const [editing, setEditing] = useState(false);
   const [username, setUsername] = useState("");
-  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     // keep initial server-side data, but still check current user for ownership state
     let mounted = true;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const client = createSupabase(url, key);
+
     const checkOwner = async () => {
-      const { data: userData } = await supabase.auth.getUser();
+      if (!client) {
+        console.warn("Supabase client not available on client — skipping ownership check");
+        if (!mounted) return;
+        setIsOwner(false);
+        setUsername(profile?.username ?? "");
+        setLoading(false);
+        return;
+      }
+      const { data: userData } = await client.auth.getUser();
       const currentUser = userData?.user ?? null;
       if (!mounted) return;
       setIsOwner(!!(currentUser && profile && currentUser.id === profile.id));
@@ -79,16 +98,17 @@ export default function ProfilePage({ initialProfile, initialListings }: Props) 
     };
   }, [profile]);
 
-  const handleAvatarSelect = (e) => {
-    const f = e.target.files?.[0];
-    if (f) setAvatarFile(f);
+  const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null;
+    setAvatarFile(f);
   };
 
   const handleSave = async () => {
     if (!isOwner) return;
     setSaving(true);
     try {
-      let avatar_url = profile?.avatar_url ?? null;
+      if (!profile) throw new Error("Профиль отсутствует");
+      let avatar_url = profile.avatar_url ?? null;
 
       if (avatarFile) {
         // get current authenticated user session and ensure ownership
@@ -237,38 +257,52 @@ export default function ProfilePage({ initialProfile, initialListings }: Props) 
     </div>
   );
 }
-
 export const getServerSideProps: GetServerSideProps = async (context) => {
   const { id } = context.params ?? {};
 
+  // Проверка параметра
   if (!id || Array.isArray(id)) {
     return { props: { initialProfile: null, initialListings: [] } };
   }
 
-  console.log("getServerSideProps: profile id=", id);
+  // Серверный Supabase клиент с Service Role Key
+  const supabaseServer = createSupabase(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
 
-  // fetch profile server-side
-  const { data: profileData, error: pErr } = await supabase
-    .from("profiles")
-    .select("id, username, email, avatar_url")
-    .eq("id", id)
-    .maybeSingle();
+  if (!supabaseServer) {
+    console.warn("Supabase server client not configured. Returning empty props.");
+    return { props: { initialProfile: null, initialListings: [] } };
+  }
 
-  console.log("getServerSideProps: profileData=", profileData, "pErr=", pErr);
+  try {
+    // Профиль пользователя
+    const { data: profileData, error: pErr } = await supabaseServer
+      .from("profiles")
+      .select("id, username, email, avatar_url, isOnboarded")
+      .eq("id", id)
+      .maybeSingle();
 
-  // fetch listings server-side
-  const { data: listingsData, error: lErr } = await supabase
-    .from("listings")
-    .select("*")
-    .eq("user_id", id)
-    .order("id", { ascending: false });
+    if (pErr) console.error("Profile fetch error:", pErr);
 
-  console.log("getServerSideProps: listings count=", listingsData?.length ?? 0, "lErr=", lErr);
+    // Объявления пользователя
+    const { data: listingsData, error: lErr } = await supabaseServer
+      .from("listings")
+      .select("*")
+      .eq("user_id", id)
+      .order("id", { ascending: false });
 
-  return {
-    props: {
-      initialProfile: profileData ?? null,
-      initialListings: listingsData ?? [],
-    },
-  };
+    if (lErr) console.error("Listings fetch error:", lErr);
+
+    return {
+      props: {
+        initialProfile: profileData ?? null,
+        initialListings: listingsData ?? [],
+      },
+    };
+  } catch (err) {
+    console.error("SSR Supabase error:", err);
+    return { props: { initialProfile: null, initialListings: [] } };
+  }
 };
