@@ -94,24 +94,22 @@ export default function ProfileButton({ user }) {
 
             {/* 🔥 КНОПКА "МОЙ ПРОФИЛЬ" */}
             <button
-              type="button"
-              onClick={async (e) => {
-                e.preventDefault();
-                const target = `/profile/${profile?.id ?? ""}`;
-                const current = router.asPath.split("?")[0];
-                setOpen(false);
-                if (current === target) return;
-                try {
-                  await router.push(target);
-                } catch (err) {
-                  console.error("Navigation error:", err);
-                  alert("Не удалось перейти на страницу профиля. Попробуйте снова.");
-                }
-              }}
-              className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-            >
-              Мой профиль
-            </button>
+  type="button"
+  onClick={async () => {
+    setOpen(false);
+    try {
+await router.push(`/profile/${user?.id}`);
+
+    } catch (err) {
+      console.error("Navigation error:", err);
+      alert("Не удалось перейти на страницу профиля. Попробуйте снова.");
+    }
+  }}
+  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+>
+  Мой профиль
+</button>
+
 
             {/* 🔶 НОВАЯ КНОПКА ЕСЛИ ПРОФИЛЬ НЕ ЗАПОЛНЕН */}
             {isProfileIncomplete && (

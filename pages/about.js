@@ -5,7 +5,7 @@ const developers = [
     name: "Маметжан Абзал",
     role: "Full-Stack Engineer | UI/UX Designer | Optimization & Performance Specialist | QA & Support",
     bio: "Абзал — универсальный разработчик проекта Korshi.kz. От фронтенда до бэкенда, от дизайна до оптимизации — я создаю комплексные решения, которые делают жизнь пользователей проще и приятнее. Люблю продумывать удобные интерфейсы и красивые решения, которые действительно работают 💙",
-    photo: "https://avatars.githubusercontent.com/u/63206438?v=4",
+    photo: "https://github.com/AbaD3v.png",
     social: {
       linkedin: "https://www.linkedin.com/in/abzal-mametzhan-63264a388/",
       github: "https://github.com/AbaD3v",
@@ -15,31 +15,31 @@ const developers = [
     name: "Болатов Диас",
     role: "Graphic Designer & Branding Specialist",
     bio: "Диас разработал уникальный логотип продукта и обеспечил целостный визуальный стиль — от дизайна до итогового оформления. Его внимание к деталям и творческий подход помогли создать запоминающийся образ Korshi.kz.",
-    photo: "https://avatars.githubusercontent.com/u/63206438?v=4",
+    photo: "https://github.com/DiasD3v.png",
     social: {
       linkedin: "https://www.linkedin.com/in/%D0%B1%D0%BE%D0%BB%D0%B0%D1%82%D0%BE%D0%B2-%D0%B4%D0%B8%D0%B0%D1%81-282a5b39a/?skipRedirect=true",
-      github: "https://github.com/maria",
+      github: "https://github.com/DiasD3v",
     },
   },
   // Сюда енды Аядиль мен Биба калдыыы
   {
     name: "Мукашев Аядиль",
-    role: "Frontend Developer",
-    bio: "Аядиль отвечает за создание интуитивно понятного и привлекательного интерфейса для пользователей Korshi.kz.",
-    photo: "https://example.com/photos/ayadil.jpg",
+    role: "SMM-Marketer",
+    bio: "Аядиль, СММ-маркетолог платформы Korshi.kz, отвечает за стратегию продвижения: управление социальными сетями, разработку контента и визуального стиля, взаимодействие с аудиторией и анализ эффективности кампаний.",
+    photo: "https://github.com/mukasevaadil2-cmd.png",
     social: {
-      linkedin: "https://linkedin.com/in/ayadil",
-      github: "",
+      linkedin: "https://www.linkedin.com/in/aya-mkashev-5a7287393/",
+      github: "https://github.com/mukasevaadil2-cmd",
     },
   },
   {
     name: "Мыңбаев Бейбарыс",
     role: "Frontend Developer & QA Tester | UI/UX Designer | Creative Problem Solver",
     bio: "Бейбарыс - один из разработчиков/руководителей Korshi kz, придумавший идею нашего проекта и реализовавший фундамент для дальнейшего развития проекта.",
-    photo: "https://example.com/photos/biba.jpg",
+    photo: "https://github.com/Terbarys.png",
     social: {
-      linkedin: "https://linkedin.com/in/biba",
-      github: "",
+      linkedin: "https://www.linkedin.com/in/beibarys-myngbayev-599778382/",
+      github: "https://github.com/Terbarys",
     },
   },
 ];
