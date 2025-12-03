@@ -9,63 +9,57 @@ export default function ListingDetail() {
   const { id } = router.query;
 
   const [listing, setListing] = useState(null);
+  const [owner, setOwner] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!id) return;
-    const fetchListing = async () => {
-      const { data, error } = await supabase
+
+    const loadData = async () => {
+      // === ЗАГРУЗКА ОБЪЯВЛЕНИЯ ===
+      const { data: listingData } = await supabase
         .from("listings")
         .select("*")
         .eq("id", id)
         .single();
 
-      if (error) console.error(error);
-      setListing(data);
+      setListing(listingData);
+
+      // === ВАЖНО: здесь было НЕПРАВИЛЬНОЕ ПОЛЕ ===
+      // раньше: listingData?.owner_id
+      if (listingData?.user_id) {
+        const { data: ownerData } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url, university, course")
+          .eq("id", listingData.user_id)   // ← ВОТ ЭТО ПРАВИЛЬНО
+          .single();
+
+        setOwner(ownerData);
+      }
+
       setLoading(false);
     };
-    fetchListing();
+
+    loadData();
   }, [id]);
 
-  if (loading) {
-    return (
-      <div className="text-center py-20 text-gray-500 dark:text-gray-300">
-        Загрузка объявления...
-      </div>
-    );
-  }
+  if (loading) return <div className="text-center py-20">Загрузка…</div>;
+  if (!listing) return <div className="text-center py-20">Объявление не найдено 😕</div>;
 
-  if (!listing) {
-    return (
-      <div className="text-center py-20 text-gray-500 dark:text-gray-300">
-        Объявление не найдено 😕
-      </div>
-    );
-  }
-
-  // --- обработка изображений ---
+  // === ГАЛЕРЕЯ ===
   let images = [];
   try {
     if (Array.isArray(listing.image_urls)) {
       images = listing.image_urls;
-    } else if (listing.image_urls && typeof listing.image_urls === "string") {
-      // Преобразуем строку вида {"a.jpg","b.jpg"} в массив
+    } else if (typeof listing.image_urls === "string") {
       images = listing.image_urls
         .replace(/[{}"]/g, "")
         .split(",")
-        .map((s) => s.trim())
         .filter(Boolean);
-    } else if (listing.image_url) {
-      images = [listing.image_url];
     }
-  } catch (e) {
-    console.warn("Ошибка парсинга image_urls:", e);
-  }
+  } catch {}
 
-  // --- если нет фото ---
-  if (!images || images.length === 0) {
-    images = ["/no-image.png"];
-  }
+  if (images.length === 0) images = ["/no-image.png"];
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10">
@@ -74,85 +68,94 @@ export default function ListingDetail() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        {/* Галерея */}
-        <div className="relative">
-          {images.length === 1 ? (
-            <img
-              src={images[0]}
-              alt={listing.title}
-              className="w-full h-96 object-cover"
-            />
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 p-2">
-              {images.map((img, i) => (
-                <motion.img
-                  key={i}
-                  src={img}
-                  alt={`Фото ${i + 1}`}
-                  className="w-full h-60 object-cover rounded-xl cursor-pointer hover:opacity-90 transition"
-                  whileHover={{ scale: 1.03 }}
-                  onClick={() => window.open(img, "_blank")}
-                />
-              ))}
-            </div>
-          )}
+        {/* ГАЛЕРЕЯ */}
+        <div className="relative w-full h-96 overflow-hidden">
+          <div className="flex w-full h-full overflow-x-auto snap-x snap-mandatory">
+            {images.map((src, index) => (
+              <img
+                key={index}
+                src={src}
+                alt="listing photo"
+                className="w-full h-96 object-cover snap-center flex-shrink-0"
+              />
+            ))}
+          </div>
         </div>
 
-        {/* Контент */}
-        <div className="p-6 space-y-4">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            {listing.title}
-          </h1>
+        <div className="p-6 space-y-6">
+          <h1 className="text-3xl font-bold">{listing.title}</h1>
 
-          <p className="text-gray-600 dark:text-gray-300 whitespace-pre-line">
-            {listing.description || "Без описания"}
+          <p className="text-gray-600 dark:text-gray-300">
+            {listing.description}
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+          <div className="grid grid-cols-2 gap-4">
             <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-xl">
-              <p className="text-gray-700 dark:text-gray-200 font-medium">
-                💰 Цена:
-              </p>
-              <p className="text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
-                {listing.price?.toLocaleString()} ₸ / месяц
+              <p className="text-gray-500">Цена</p>
+              <p className="text-2xl font-bold text-emerald-600">
+                {listing.price} ₸
               </p>
             </div>
 
             <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-xl">
-              <p className="text-gray-700 dark:text-gray-200 font-medium">
-                📍 Город:
-              </p>
-              <p className="text-xl font-semibold">{listing.city}</p>
+              <p className="text-gray-500">Город</p>
+              <p className="text-xl font-bold">{listing.city}</p>
             </div>
           </div>
 
-          {(listing.totalSpots || listing.filledSpots) && (
-            <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-xl">
-              <p className="text-gray-700 dark:text-gray-200 font-medium">
-                👥 Мест:
-              </p>
-              <p className="text-lg">
-                {listing.filledSpots || 0} / {listing.totalSpots || "?"}
-              </p>
-            </div>
-          )}
-
-          {(listing.address || (listing.lat && listing.lng)) && (
-            <MapView 
-              address={listing.address}
-              coordinates={listing.lat && listing.lng ? [listing.lat, listing.lng] : undefined}
+          {listing.lat && listing.lng && (
+            <MapView
+              coordinates={[listing.lat, listing.lng]}
               height="350px"
               showCard={true}
             />
           )}
 
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 rounded-xl transition"
+          {/* ВЛАДЕЛЕЦ */}
+          <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-800 p-5 rounded-xl border">
+            {owner ? (
+              <>
+                <div className="flex items-center gap-4">
+                  <img
+                    src={owner.avatar_url || "/default-avatar.png"}
+                    className="w-16 h-16 rounded-full object-cover border"
+                  />
+                  <div>
+                    <div className="text-lg font-semibold">
+                      {owner.full_name || "Без имени"}
+                    </div>
+                    <div className="text-gray-500 text-sm">
+                      {owner.university} — {owner.course} курс
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => router.push(`/chat/${owner.id}`)}
+                  className="px-5 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700"
+                >
+                  Написать
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="text-gray-600">Профиль владельца не найден</div>
+                <button
+                  className="px-5 py-2 bg-gray-400 text-white rounded-xl"
+                  disabled
+                >
+                  Написать
+                </button>
+              </>
+            )}
+          </div>
+
+          <button
             onClick={() => router.push("/listings")}
+            className="w-full bg-emerald-600 text-white py-3 rounded-xl"
           >
-            ← Вернуться к объявлениям
-          </motion.button>
+            ← Назад к объявлениям
+          </button>
         </div>
       </motion.div>
     </div>

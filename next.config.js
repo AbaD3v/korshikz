@@ -1,9 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
   images: {
-    domains: ['krisha-photos.kcdn.online'], // разрешаем внешний хост для next/image
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "hhttkidobrwwautenmva.supabase.co",
+      },
+      {
+        protocol: "https",
+        hostname: "krisha-photos.kcdn.online",
+      },
+    ],
   },
 };
 
 module.exports = nextConfig;
+

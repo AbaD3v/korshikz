@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import Image from "next/image";
 import Link from "next/link";
-import useUserProfile from "/hooks/useUserProfile"; // ⬅ добавили
+import useUserProfile from "/hooks/useUserProfile"; 
 
 export default function ProfileButton({ user }) {
   const [open, setOpen] = useState(false);
@@ -10,7 +10,7 @@ export default function ProfileButton({ user }) {
   const panelRef = useRef(null);
   const router = useRouter();
 
-  const { profile, isProfileIncomplete } = useUserProfile(); // ⬅ добавили
+  const { profile, isProfileIncomplete } = useUserProfile();
 
   useEffect(() => {
     function onPointerDown(e) {
@@ -33,12 +33,17 @@ export default function ProfileButton({ user }) {
 
   const avatarSize = 40;
 
-  const initials = (user?.username || "?")
-    .split(" ")
-    .map((s) => s[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+  // 🔥 Используем full_name вместо username
+  const displayName = profile?.full_name || "Профиль";
+
+  // 🔥 Инициалы из full_name
+const initials = (profile?.full_name || profile?.username || "?")
+  .split(" ")
+  .map(s => s[0])
+  .slice(0, 2)
+  .join("")
+  .toUpperCase();
+
 
   return (
     <div className="relative inline-block text-left">
@@ -59,14 +64,15 @@ export default function ProfileButton({ user }) {
         }}
         className="inline-flex items-center gap-2 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition"
       >
-        {user?.avatar_url ? (
+        {/* Аватар */}
+        {profile?.avatar_url ? (
           <div
             className="relative rounded-full overflow-hidden"
             style={{ width: avatarSize, height: avatarSize }}
           >
             <Image
-              src={user.avatar_url}
-              alt={user.username || "avatar"}
+              src={profile.avatar_url}
+              alt={displayName}
               fill
               className="object-cover"
             />
@@ -80,9 +86,11 @@ export default function ProfileButton({ user }) {
           </div>
         )}
 
-        <span className="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-200">
-          {user?.username ?? "Профиль"}
-        </span>
+        {/* 🔥 Показываем полное имя */}
+       <span className="hidden sm:inline text-sm font-medium">
+  {profile?.full_name ?? "Профиль"}
+</span>
+
       </button>
 
       {open && (
@@ -92,26 +100,24 @@ export default function ProfileButton({ user }) {
         >
           <div className="py-1">
 
-            {/* 🔥 КНОПКА "МОЙ ПРОФИЛЬ" */}
+            {/* Мой профиль */}
             <button
-  type="button"
-  onClick={async () => {
-    setOpen(false);
-    try {
-await router.push(`/profile/${user?.id}`);
+              type="button"
+              onClick={async () => {
+                setOpen(false);
+                try {
+                  await router.push(`/profile/${user?.id}`);
+                } catch (err) {
+                  console.error("Navigation error:", err);
+                  alert("Не удалось перейти на страницу профиля. Попробуйте снова.");
+                }
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              Мой профиль
+            </button>
 
-    } catch (err) {
-      console.error("Navigation error:", err);
-      alert("Не удалось перейти на страницу профиля. Попробуйте снова.");
-    }
-  }}
-  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
->
-  Мой профиль
-</button>
-
-
-            {/* 🔶 НОВАЯ КНОПКА ЕСЛИ ПРОФИЛЬ НЕ ЗАПОЛНЕН */}
+            {/* Заполнить профиль (если неполный) */}
             {isProfileIncomplete && (
               <button
                 type="button"
