@@ -1,3 +1,4 @@
+// pages/listings/index.js
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
@@ -83,66 +84,71 @@ export default function Listings({ selectedCity }) {
       setUserCoords(null);
       return;
     }
-    navigator.geolocation.getCurrentPosition((pos) => {
-      setUserCoords([pos.coords.latitude, pos.coords.longitude]);
-    });
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserCoords([pos.coords.latitude, pos.coords.longitude]);
+      },
+      (err) => {
+        console.warn("Geolocation error:", err);
+        setGeoEnabled(false);
+        setUserCoords(null);
+      },
+      { enableHighAccuracy: true, maximumAge: 60_000 }
+    );
   }, [geoEnabled]);
 
-  /* SUPABASE QUERY BUILDER */
-  const buildQuery = async () => {
-    let q = supabase.from("listings").select("*");
+  /* SUPABASE RPC QUERY (search_listings) */
+  const buildAndRunQuery = async () => {
+    // Prepare RPC params: pass NULL for unused filters
+  const rpcParams = {
+  p_price_min: priceMin !== 0 ? priceMin : null,
+  p_price_max: priceMax !== priceBoundsRef.current.max ? priceMax : null,
 
-    if (selectedCity) q = q.eq("city", selectedCity);
+  p_rooms: rooms.length ? rooms.map(String) : null,
+  p_types: types.length ? types.map(String) : null,
+  p_amenities: amenities.length ? amenities.map(String) : null,
 
-    if (debouncedSearch.trim()) {
-      const like = `%${debouncedSearch.trim()}%`;
-      q = q.or(`title.ilike.${like},description.ilike.${like}`);
+  p_near_metro: nearMetro ? true : null,
+
+  // GEO
+  p_lat: geoEnabled && userCoords ? Number(userCoords[0]) : null,
+  p_lng: geoEnabled && userCoords ? Number(userCoords[1]) : null,
+  p_radius_km: geoEnabled ? Number(radius) : null,
+
+  p_limit: 200
+};
+
+
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.rpc("search_listings", rpcParams);
+      if (error) throw error;
+      // data is array of listings (SETOF listings)
+      setListings(data || []);
+      if (data) {
+        window.__LOADED_LISTINGS__ = data;
+        if (data.length) console.log("First listing:", data[0]);
+      }
+    } catch (err) {
+      console.error("RPC Load error:", err.message || err);
+    } finally {
+      setLoading(false);
     }
-
-    q = q.gte("price", priceMin).lte("price", priceMax);
-
-    if (rooms.length) q = q.in("rooms", rooms);
-    if (types.length) q = q.in("property_type", types);
-    if (amenities.length) q = q.contains("amenities", amenities);
-
-    if (nearMetro) q = q.eq("near_metro", true);
-
-    if (sort === "price-asc") q = q.order("price", { ascending: true });
-    else if (sort === "price-desc") q = q.order("price", { ascending: false });
-    else q = q.order("id", { ascending: false });
-
-    return q.limit(200);
   };
 
-  /* FETCH */
+  /* FETCH on filters change */
   useEffect(() => {
     let mounted = true;
-
     const load = async () => {
-      setLoading(true);
-      try {
-        const q = await buildQuery();
-        const { data, error } = await q;
-
-        if (error) throw error;
-        if (mounted) setListings(data || []);
-        if (data) {
-          console.log("Loaded listings:", data);
-          // for quick inspect in console
-          window.__LOADED_LISTINGS__ = data;
-          if (data.length) console.log("First listing:", data[0]);
-        }
-      } catch (err) {
-        console.error("Load error:", err.message);
-      } finally {
-        if (mounted) setLoading(false);
-      }
+      if (!mounted) return;
+      await buildAndRunQuery();
     };
-
     load();
     return () => {
       mounted = false;
     };
+    // NOTE: we serialize arrays by joining to string in deps to avoid unnecessary rerenders
   }, [
     debouncedSearch,
     priceMin,
@@ -155,6 +161,8 @@ export default function Listings({ selectedCity }) {
     radius,
     sort,
     selectedCity,
+    // userCoords may come async; include it as dependency
+    userCoords ? userCoords.join(",") : null,
   ]);
 
   /* FILTER HELPERS */
@@ -212,6 +220,7 @@ export default function Listings({ selectedCity }) {
             <SortButton active={sort === "newest"} onClick={() => setSort("newest")}>Новые</SortButton>
             <SortButton active={sort === "price-asc"} onClick={() => setSort("price-asc")}>↑ Цена</SortButton>
             <SortButton active={sort === "price-desc"} onClick={() => setSort("price-desc")}>↓ Цена</SortButton>
+            <SortButton active={sort === "distance"} onClick={() => setSort("distance")}>◷ По расстоянию</SortButton>
           </div>
         </div>
       </div>
@@ -221,7 +230,7 @@ export default function Listings({ selectedCity }) {
 
         {/* LEFT FILTERS */}
         <aside className="hidden lg:block">
-  <div className="sticky top-24 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 shadow-xl space-y-6">
+          <div className="sticky top-24 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 shadow-xl space-y-6">
             <Filters
               priceMin={priceMin}
               priceMax={priceMax}
@@ -244,7 +253,6 @@ export default function Listings({ selectedCity }) {
               apply={applyUrlFilters}
               reset={resetFilters}
             />
-
           </div>
         </aside>
 
@@ -277,7 +285,7 @@ export default function Listings({ selectedCity }) {
 }
 
 /* ==========================================
-    COMPONENTS
+    COMPONENTS (unchanged UI helpers)
 ========================================== */
 
 function SortButton({ active, onClick, children }) {
@@ -299,7 +307,7 @@ function ListingSkeleton() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div className="animate-pulse bg-white dark:bg-gray-800 rounded-2xl h-[340px] shadow-sm border border-gray-100 dark:border-gray-700" />
+        <div className="animate-pulse bg-white dark:bg-gray-800 rounded-2xl h-[340px] shadow-sm border border-gray-100 dark:border-gray-700" key={i} />
       ))}
     </div>
   );

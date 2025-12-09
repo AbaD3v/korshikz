@@ -182,78 +182,83 @@ export default function CreateListing({ city }) {
     return urls;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setSuccess(false);
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError("");
+  setSuccess(false);
 
-    if (!formData.title || !formData.price || !formData.city || !formData.address) {
-      setError("Пожалуйста, заполните обязательные поля: название, цену, город и адрес.");
-      return;
-    }
+  if (!formData.title || !formData.price || !formData.city || !formData.address) {
+    setError("Пожалуйста, заполните обязательные поля: название, цену, город и адрес.");
+    return;
+  }
 
-    setLoading(true);
-    try {
-      const imageUrls = await uploadImages();
+  setLoading(true);
+  try {
+    // 1. Загружаем изображения
+    const imageUrls = await uploadImages();
 
-      // Получаем координаты через Яндекс Геокодер, если нет lat/lng
-      if (formData.address && (!formData.lat || !formData.lng)) {
-        const response = await fetch(
-          `https://geocode-maps.yandex.ru/1.x/?apikey=${process.env.NEXT_PUBLIC_YANDEX_API_KEY}&format=json&geocode=${encodeURIComponent(
-            formData.address
-          )}`
-        );
-        const data = await response.json();
-
-        if (
-          data.response &&
-          data.response.GeoObjectCollection.featureMember.length > 0
-        ) {
-          const pos =
-            data.response.GeoObjectCollection.featureMember[0].GeoObject.Point.pos;
-          const [lon, lat] = pos.split(" ").map(Number);
-          formData.lat = lat;
-          formData.lng = lon;
-        }
+    // 2. Если координаты ещё нет, пробуем геокодировать через Яндекс
+    if (formData.address && (!formData.lat || !formData.lng)) {
+      const response = await fetch(
+        `https://geocode-maps.yandex.ru/1.x/?apikey=${process.env.NEXT_PUBLIC_YANDEX_API_KEY}&format=json&geocode=${encodeURIComponent(
+          formData.address
+        )}`
+      );
+      const data = await response.json();
+      if (data.response?.GeoObjectCollection?.featureMember?.length > 0) {
+        const pos =
+          data.response.GeoObjectCollection.featureMember[0].GeoObject.Point.pos;
+        const [lon, lat] = pos.split(" ").map(Number);
+        formData.lat = lat;
+        formData.lng = lon;
       }
-
-      const coordinates = formData.lat && formData.lng ? [formData.lat, formData.lng] : null;
-
-      const { error } = await supabase.from("listings").insert([
-        {
-          ...formData,
-          price: Number(formData.price),
-          totalSpots: Number(formData.totalSpots) || 0,
-          filledSpots: Number(formData.filledSpots) || 0,
-          image_urls: imageUrls.length ? imageUrls : previews,
-          coordinates,
-          user_id: user.id,
-        },
-      ]);
-
-      if (error) throw error;
-      setSuccess(true);
-      setFormData({
-        title: "",
-        description: "",
-        price: "",
-        totalSpots: "",
-        filledSpots: 0,
-        city: city || "",
-        address: "",
-        lat: null,
-        lng: null,
-      });
-      setImages([]);
-      setPreviews([]);
-      setProgress(0);
-    } catch (err) {
-      console.error(err);
-      setError("Не удалось создать объявление. Попробуйте снова.");
-    } finally {
-      setLoading(false);
     }
-  };
+
+    // 3. Формируем корректную геометрию для PostGIS
+    const coordinates =
+      formData.lat && formData.lng
+        ? `POINT(${formData.lng} ${formData.lat})`
+        : null;
+
+    // 4. Вставка в Supabase
+    const { error } = await supabase.from("listings").insert([
+      {
+        ...formData,
+        price: Number(formData.price),
+        totalSpots: Number(formData.totalSpots) || 0,
+        filledSpots: Number(formData.filledSpots) || 0,
+        image_urls: imageUrls.length ? imageUrls : previews,
+        coordinates,
+        user_id: user.id,
+      },
+    ]);
+
+    if (error) throw error;
+
+    // 5. Очистка формы и статус успешной публикации
+    setSuccess(true);
+    setFormData({
+      title: "",
+      description: "",
+      price: "",
+      totalSpots: "",
+      filledSpots: 0,
+      city: city || "",
+      address: "",
+      lat: null,
+      lng: null,
+    });
+    setImages([]);
+    setPreviews([]);
+    setProgress(0);
+  } catch (err) {
+    console.error(err);
+    setError("Не удалось создать объявление. Попробуйте снова.");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   // --- UI ---
   return (
@@ -407,6 +412,171 @@ export default function CreateListing({ city }) {
             />
           </div>
         </div>
+        {/* --- Расширенные поля недвижимости --- */}
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+  <div>
+    <label className="block font-medium mb-1">Тип недвижимости</label>
+    <select
+      name="property_type"
+      value={formData.property_type || ""}
+      onChange={handleChange}
+      className="input"
+    >
+      <option value="">Не выбрано</option>
+      <option value="квартира">Квартира</option>
+      <option value="комната">Комната</option>
+      <option value="дом">Дом</option>
+      <option value="другое">Другое</option>
+    </select>
+  </div>
+
+  <div>
+    <label className="block font-medium mb-1">Кол-во комнат</label>
+    <input
+      type="number"
+      name="rooms"
+      value={formData.rooms || ""}
+      onChange={handleChange}
+      className="input"
+    />
+  </div>
+
+  <div>
+    <label className="block font-medium mb-1">Площадь (м²)</label>
+    <input
+      type="number"
+      name="area_total"
+      value={formData.area_total || ""}
+      onChange={handleChange}
+      className="input"
+    />
+  </div>
+
+  <div>
+    <label className="block font-medium mb-1">Этаж</label>
+    <input
+      type="number"
+      name="floor"
+      value={formData.floor || ""}
+      onChange={handleChange}
+      className="input"
+    />
+  </div>
+
+  <div>
+    <label className="block font-medium mb-1">Этажей всего</label>
+    <input
+      type="number"
+      name="floors_total"
+      value={formData.floors_total || ""}
+      onChange={handleChange}
+      className="input"
+    />
+  </div>
+
+  <div>
+    <label className="block font-medium mb-1">Тип аренды</label>
+    <select
+      name="rent_type"
+      value={formData.rent_type || ""}
+      onChange={handleChange}
+      className="input"
+    >
+      <option value="">Не выбрано</option>
+      <option value="долгосрочная">Долгосрочная</option>
+      <option value="посуточно">Посуточно</option>
+    </select>
+  </div>
+
+  <div>
+    <label className="block font-medium mb-1">Год постройки</label>
+    <input
+      type="number"
+      name="year_built"
+      value={formData.year_built || ""}
+      onChange={handleChange}
+      className="input"
+    />
+  </div>
+
+  <div>
+    <label className="block font-medium mb-1">Тип здания</label>
+    <select
+      name="building_type"
+      value={formData.building_type || ""}
+      onChange={handleChange}
+      className="input"
+    >
+      <option value="">Не выбрано</option>
+      <option value="монолит">Монолит</option>
+      <option value="кирпич">Кирпич</option>
+      <option value="панель">Панель</option>
+      <option value="другое">Другое</option>
+    </select>
+  </div>
+
+  <div className="col-span-1 sm:col-span-2">
+    <label className="block font-medium mb-1">Метро (через запятую)</label>
+    <input
+      type="text"
+      name="metro"
+      value={formData.metro || ""}
+      onChange={(e) =>
+        setFormData({ ...formData, metro: e.target.value.split(",").map((s) => s.trim()) })
+      }
+      className="input"
+    />
+  </div>
+
+  <div className="col-span-1 sm:col-span-2">
+    <label className="block font-medium mb-1">Теги (через запятую)</label>
+    <input
+      type="text"
+      name="tags"
+      value={formData.tags || ""}
+      onChange={(e) =>
+        setFormData({ ...formData, tags: e.target.value.split(",").map((s) => s.trim()) })
+      }
+      className="input"
+    />
+  </div>
+
+  <div>
+    <label className="block font-medium mb-1">Имя контакта</label>
+    <input
+      type="text"
+      name="contact_name"
+      value={formData.contact_name || ""}
+      onChange={handleChange}
+      className="input"
+    />
+  </div>
+
+  <div>
+    <label className="block font-medium mb-1">Телефон</label>
+    <input
+      type="text"
+      name="phone"
+      value={formData.phone || ""}
+      onChange={handleChange}
+      className="input"
+    />
+  </div>
+
+  <div>
+    <label className="block font-medium mb-1">WhatsApp</label>
+    <input
+      type="text"
+      name="whatsapp"
+      value={formData.whatsapp || ""}
+      onChange={handleChange}
+      className="input"
+    />
+  </div>
+
+</div>
+
 
         {/* --- 4. Фото пользователя --- */}
         <div>
