@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../lib/supabaseClient";
 import { sanitizeFileName } from "../lib/sanitizeFileName";
-import MapView from "/components/MapView";
+import MapView from "/components/mapview";
 
 // --- функции для извлечения адреса и города ---
 function extractAddress(title) {

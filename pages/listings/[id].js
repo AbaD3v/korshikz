@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/hooks/utils/supabase/client"; // <- используй свой путь к supabase, если отличается
-import MapView from "@/components/MapView";
+import MapView from "@/components/mapview";
 
 export default function ListingDetail() {
   const router = useRouter();
