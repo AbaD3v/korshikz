@@ -75,26 +75,28 @@ export default function ChatPage() {
     return () => supabase.removeChannel(channel);
   }, [otherUserId, conversationId]);
 
-  const sendMessage = async () => {
-    if (!input.trim() || !conversationId) return;
+// вверху: импортируй hook если используешь, иначе используй существующий код
+// предполагаем, что у тебя есть user (current user)
+const sendMessage = async () => {
+  if (!input.trim() || !user || !otherUserId || !conversationId) return;
 
-    const userData = await supabase.auth.getUser();
-    const user = userData.data.user;
-    if (!user) return;
-
-    // Вставляем сообщение с новым conversation_id, если нужно
-    await supabase.from("messages").insert({
-      id: uuidv4(),
-      conversation_id: conversationId,
-      sender_id: user.id,
-      receiver_id: otherUserId,
-      body: input.trim(),
-      created_at: new Date().toISOString(),
-    });
-
-    setInput("");
-    setTimeout(scrollDown, 100);
+  const messagePayload = {
+    id: uuidv4(),
+    conversation_id: conversationId,
+    sender_id: user.id,
+    receiver_id: otherUserId,
+    body: input.trim(),
+    metadata: {},
+    is_system: false,
+    delivered: false,
+    is_read: false,
   };
+
+  const { error } = await supabase.from("messages").insert(messagePayload);
+  if (error) console.error("sendMessage insert error", error);
+  else setInput("");
+};
+
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", padding: 20 }}>

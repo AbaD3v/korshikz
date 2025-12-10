@@ -1,74 +1,163 @@
-// pages/chat/index.js
 import { useEffect, useState } from "react";
-import { supabase } from "@/hooks/utils/supabase/client";
 import Link from "next/link";
+import { supabase } from "@/hooks/utils/supabase/client";
+
+interface Profile {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+}
+
+interface DialogItem {
+  user: Profile;
+  lastMessage: string | null;
+  lastTime: string | null;
+}
 
 export default function ChatList() {
-  const [dialogs, setDialogs] = useState([]);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<any>(null);
+  const [dialogs, setDialogs] = useState<DialogItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Получаем текущего пользователя
+  // Получаем текущего юзера
   useEffect(() => {
-    const getUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) setUser(data.user);
-    };
-    getUser();
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user ?? null);
+    });
   }, []);
 
-  // Загружаем список диалогов
+  // Загружаем диалоги
   useEffect(() => {
     if (!user) return;
 
     const loadDialogs = async () => {
-      // Получаем все сообщения пользователя
-      const { data, error } = await supabase
+      setLoading(true);
+
+      /** 1) Берём последние сообщения по каждой беседе */
+      const { data: messages } = await supabase
         .from("messages")
-        .select("sender_id, receiver_id")
-        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`);
+        .select("*")
+        .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+        .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error("Ошибка загрузки сообщений:", error.message);
-        return;
+      if (!messages) return setLoading(false);
+
+      /** 2) Собираем уникальных собеседников */
+      const map = new Map<string, any>();
+
+      for (const msg of messages) {
+        const otherId = msg.sender_id === user.id ? msg.receiver_id : msg.sender_id;
+
+        if (!map.has(otherId)) {
+          map.set(otherId, {
+            otherUserId: otherId,
+            lastMessage: msg.body,
+            lastTime: msg.created_at,
+          });
+        }
       }
 
-      if (data) {
-        // Создаём Set с уникальными пользователями
-        const usersSet = new Set();
+      /** 3) Загружаем данные профилей */
+      const ids = Array.from(map.keys());
 
-        data.forEach((msg) => {
-          // Определяем другого пользователя в диалоге
-          const otherUserId = msg.sender_id === user.id ? msg.receiver_id : msg.sender_id;
-          usersSet.add(otherUserId);
-        });
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url")
+        .in("id", ids);
 
-        setDialogs(Array.from(usersSet));
-      }
+      /** 4) Создаём список */
+      const result: DialogItem[] = ids.map((uid) => {
+        const prof = profiles?.find((p) => p.id === uid);
+
+        return {
+          user: prof ?? { id: uid, full_name: "Неизвестно", avatar_url: null },
+          lastMessage: map.get(uid).lastMessage,
+          lastTime: map.get(uid).lastTime,
+        };
+      });
+
+      setDialogs(result);
+      setLoading(false);
     };
 
     loadDialogs();
   }, [user]);
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>Диалоги</h2>
-      {dialogs.length === 0 && <p>Нет сообщений</p>}
+    <div style={{ padding: 20, fontFamily: "Inter, sans-serif" }}>
+      <h2 style={{ fontSize: 24, marginBottom: 20 }}>Чаты</h2>
 
-      {dialogs.map((otherUserId) => (
-        <Link key={otherUserId} href={`/chat/${otherUserId}`}>
-          <div
+      {loading && <p>Загрузка…</p>}
+      {!loading && dialogs.length === 0 && <p>Нет диалогов</p>}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {dialogs.map(({ user, lastMessage, lastTime }) => (
+          <Link
+            key={user.id}
+            href={`/chat/${user.id}`}
             style={{
-              padding: 15,
-              background: "#f4f4f4",
-              marginTop: 10,
-              borderRadius: 10,
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              padding: 12,
+              borderRadius: 12,
+              background: "#f8f8f8",
               cursor: "pointer",
+              textDecoration: "none",
             }}
           >
-            Чат с пользователем {otherUserId}
-          </div>
-        </Link>
-      ))}
+            {/* Аватар */}
+            <img
+              src={
+                user.avatar_url ||
+                "https://ui-avatars.com/api/?name=" + encodeURIComponent(user.full_name || "User")
+              }
+              style={{
+                width: 50,
+                height: 50,
+                borderRadius: "50%",
+                objectFit: "cover",
+              }}
+            />
+
+            {/* Имя + последнее сообщение */}
+            <div style={{ flexGrow: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: 16 }}>
+                {user.full_name || "Пользователь"}
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#777",
+                  overflow: "hidden",
+                  whiteSpace: "nowrap",
+                  textOverflow: "ellipsis",
+                  maxWidth: "240px",
+                }}
+              >
+                {lastMessage}
+              </div>
+            </div>
+
+            {/* Время */}
+            <div
+              style={{
+                fontSize: 12,
+                color: "#999",
+                minWidth: 50,
+                textAlign: "right",
+              }}
+            >
+              {lastTime
+                ? new Date(lastTime).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : ""}
+            </div>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
