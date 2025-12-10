@@ -418,35 +418,103 @@ export default function ChatPage() {
   };
 
   // --- UI
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", maxHeight: "100dvh", padding: 0, fontFamily: "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial" }}>
-      {/* Header */}
-      <div style={{ padding: 12, borderBottom: "1px solid #eee", display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#ddd", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          {otherUserAvatar ? (
-            <img src={otherUserAvatar} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          ) : (
-            <div style={{ fontSize: 14, color: "#555" }}>{otherUserName ? otherUserName[0] : "U"}</div>
-          )}
-        </div>
-        <div style={{ flexGrow: 1 }}>
-          <div style={{ fontWeight: 600 }}>{otherUserName || `Пользователь ${otherUserId?.slice?.(0,6) ?? ""}`}</div>
-          <div style={{ fontSize: 12, color: "#666" }}>{presenceText()}</div>
-        </div>
-        <div>
-          <button onClick={() => markRead()} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e2e2", background: "#fff", cursor: "pointer" }}>
-            Пометить прочитанным
-          </button>
-        </div>
+return (
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      height: "100dvh",
+      maxHeight: "100dvh",
+      overflow: "hidden",
+      padding: 0,
+      fontFamily:
+        "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial",
+      background: "#fff",
+    }}
+  >
+    {/* Header */}
+    <div
+      style={{
+        padding: 12,
+        borderBottom: "1px solid #eee",
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        background: "#fff",
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: "50%",
+          background: "#ddd",
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {otherUserAvatar ? (
+          <img
+            src={otherUserAvatar}
+            alt="avatar"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : (
+          <div style={{ fontSize: 14, color: "#555" }}>
+            {otherUserName ? otherUserName[0] : "U"}
+          </div>
+        )}
       </div>
 
-      {/* Messages */}
-      <div style={{ flexGrow: 1, overflowY: "auto", padding: "12px 16px", background: "#f7f7f7" }}>
-        {messages.map((msg) => {
-          const isMe = user && msg.sender_id === user.id;
-          return (
-            <div key={msg.id} style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", marginBottom: 10 }}>
-              <div style={{
+      <div style={{ flexGrow: 1 }}>
+        <div style={{ fontWeight: 600 }}>
+          {otherUserName ||
+            `Пользователь ${otherUserId?.slice?.(0, 6) ?? ""}`}
+        </div>
+        <div style={{ fontSize: 12, color: "#666" }}>{presenceText()}</div>
+      </div>
+
+      <button
+        onClick={() => markRead()}
+        style={{
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: "1px solid #e2e2e2",
+          background: "#fff",
+          cursor: "pointer",
+          flexShrink: 0,
+        }}
+      >
+        Пометить прочитанным
+      </button>
+    </div>
+
+    {/* Messages */}
+    <div
+      style={{
+        flexGrow: 1,
+        overflowY: "auto",
+        padding: "12px 16px",
+        background: "#f7f7f7",
+        scrollBehavior: "smooth",
+      }}
+    >
+      {messages.map((msg) => {
+        const isMe = user && msg.sender_id === user.id;
+        return (
+          <div
+            key={msg.id}
+            style={{
+              display: "flex",
+              justifyContent: isMe ? "flex-end" : "flex-start",
+              marginBottom: 10,
+            }}
+          >
+            <div
+              style={{
                 maxWidth: "78%",
                 padding: "10px 14px",
                 borderRadius: 14,
@@ -454,35 +522,93 @@ export default function ChatPage() {
                 color: isMe ? "#fff" : "#111",
                 boxShadow: "0 1px 0 rgba(0,0,0,0.03)",
                 wordBreak: "break-word",
-                position: "relative"
-              }}>
-                <div>{msg.body}</div>
-                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginTop: 6 }}>
-                  <div style={{ fontSize: 11, color: isMe ? "rgba(255,255,255,0.9)" : "#666" }}>
-                    {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}
-                  </div>
-                  {renderTicks(msg)}
+                position: "relative",
+              }}
+            >
+              <div>{msg.body}</div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  alignItems: "center",
+                  marginTop: 6,
+                  gap: 6,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: isMe
+                      ? "rgba(255,255,255,0.9)"
+                      : "rgba(0,0,0,0.55)",
+                  }}
+                >
+                  {msg.created_at
+                    ? new Date(msg.created_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : ""}
                 </div>
+
+                {renderTicks(msg)}
               </div>
             </div>
-          );
-        })}
-        <div ref={bottomRef} />
-      </div>
+          </div>
+        );
+      })}
 
-      {/* Input */}
-      <div style={{ padding: 12, borderTop: "1px solid #eee", display: "flex", gap: 10, alignItems: "center", background: "#fff" }}>
-        <input
-          value={input}
-          onChange={(e) => { setInput(e.target.value); sendTyping(); }}
-          onKeyDown={(e) => { if (e.key === "Enter") sendMessage(); }}
-          placeholder="Написать сообщение..."
-          style={{ flexGrow: 1, padding: "10px 14px", borderRadius: 20, border: "1px solid #e6e6e6", outline: "none" }}
-        />
-        <button onClick={sendMessage} style={{ padding: "10px 14px", borderRadius: 12, background: "#0b84ff", color: "#fff", border: "none", cursor: "pointer" }}>
-          ➤
-        </button>
-      </div>
+      <div ref={bottomRef} />
     </div>
-  );
+
+    {/* Input */}
+    <div
+      style={{
+        padding: 12,
+        borderTop: "1px solid #eee",
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+        background: "#fff",
+        flexShrink: 0,
+      }}
+    >
+      <input
+        value={input}
+        onChange={(e) => {
+          setInput(e.target.value);
+          sendTyping();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") sendMessage();
+        }}
+        placeholder="Написать сообщение..."
+        style={{
+          flexGrow: 1,
+          padding: "10px 14px",
+          borderRadius: 20,
+          border: "1px solid #e6e6e6",
+          outline: "none",
+          fontSize: 15,
+        }}
+      />
+
+      <button
+        onClick={sendMessage}
+        style={{
+          padding: "10px 14px",
+          borderRadius: 12,
+          background: "#0b84ff",
+          color: "#fff",
+          border: "none",
+          cursor: "pointer",
+          fontSize: 16,
+        }}
+      >
+        ➤
+      </button>
+    </div>
+  </div>
+);
 }

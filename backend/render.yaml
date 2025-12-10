@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: korshikz-backend
+    env: node
+    repo: https://github.com/AbaD3v/korshikz
+    branch: main
+    rootDir: backend
+    buildCommand: 'npm install'
+    startCommand: 'npm start'
+    envVars:
+      - key: DATABASE_URL
+        sync: true
+      - key: SUPABASE_URL
+        sync: true
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: true
+      - key: PORT
+        value: '4000'
