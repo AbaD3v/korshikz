@@ -1,43 +1,37 @@
 "use client";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 
 const ListingMap = ({ listings }) => {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const router = useRouter();
-  const id = router.query.id || router.query.userId;
 
-  useEffect(() => {
-    console.log("Profile page: router.query =", router.query);
-    console.log("Profile page: id =", id);
-  }, [router.query]);
+  const [isMobileMapOpen, setIsMobileMapOpen] = useState(false);
+
+  const isDesktop = typeof window !== "undefined" && window.innerWidth >= 1024;
+
+  const id = router.query.id || router.query.userId;
 
   useEffect(() => {
     if (!window.ymaps || !mapRef.current) return;
 
     window.ymaps.ready(() => {
-      // инициализируем карту один раз
       if (!mapInstance.current) {
         mapInstance.current = new window.ymaps.Map(mapRef.current, {
-          center: [51.1605, 71.4704], // Астана — дефолт
+          center: [51.1605, 71.4704],
           zoom: 11,
           controls: ["zoomControl"],
         });
       }
 
-      // очистим предыдущие объекты карты (если были)
       try {
         mapInstance.current.geoObjects.removeAll();
-      } catch (e) {
-        // noop
-      }
+      } catch {}
 
       const clusterer = new window.ymaps.Clusterer({
         preset: "islands#invertedBlueClusterIcons",
         groupByCoordinates: false,
-        clusterDisableClickZoom: false,
-        clusterHideIconOnBalloonOpen: false,
       });
 
       const normalizeCoords = (coords) => {
@@ -48,23 +42,17 @@ const ListingMap = ({ listings }) => {
       };
 
       const getCoords = (l) => {
-        if (Array.isArray(l.coordinates) && l.coordinates.length >= 2) {
-          return normalizeCoords(l.coordinates);
-        }
-        if (l.coordinates && Array.isArray(l.coordinates.coordinates) && l.coordinates.coordinates.length >= 2) {
-          return normalizeCoords(l.coordinates.coordinates);
-        }
-        if (l.lat != null && l.lng != null) return [Number(l.lat), Number(l.lng)];
-        if (l.latitude != null && l.longitude != null) return [Number(l.latitude), Number(l.longitude)];
+        if (Array.isArray(l.coordinates)) return normalizeCoords(l.coordinates);
+        if (l.coordinates?.coordinates) return normalizeCoords(l.coordinates.coordinates);
+        if (l.lat && l.lng) return [Number(l.lat), Number(l.lng)];
         return null;
       };
 
       const placemarks = listings
         .map((l) => {
           const coords = getCoords(l);
-          console.debug(`Listing ${l.id} -> computed coords:`, coords);
           if (!coords) return null;
-          const priceStr = l.price != null ? `${Number(l.price).toLocaleString("ru-RU")} ₸` : "";
+          const priceStr = l.price ? `${Number(l.price).toLocaleString("ru-RU")} ₸` : "";
           return new window.ymaps.Placemark(
             coords,
             {
@@ -72,11 +60,7 @@ const ListingMap = ({ listings }) => {
                 <div style="width: 180px">
                   <strong>${l.title || ""}</strong><br/>
                   ${priceStr}<br/>
-                  ${l.city || ""}
-                  <br/>
-                  <a href="/listings/${l.id}" target="_blank" class="text-blue-600 hover:underline">
-                    Открыть объявление
-                  </a>
+                  <a href="/listings/${l.id}" target="_blank">Открыть</a>
                 </div>
               `,
             },
@@ -85,8 +69,6 @@ const ListingMap = ({ listings }) => {
         })
         .filter(Boolean);
 
-      console.debug("Placemark count:", placemarks.length);
-
       if (placemarks.length) {
         clusterer.add(placemarks);
         mapInstance.current.geoObjects.add(clusterer);
@@ -94,7 +76,6 @@ const ListingMap = ({ listings }) => {
         if (bounds) mapInstance.current.setBounds(bounds, { checkZoomRange: true });
       }
     });
-    // end ready
 
     return () => {
       if (mapInstance.current) {
@@ -102,13 +83,46 @@ const ListingMap = ({ listings }) => {
         mapInstance.current = null;
       }
     };
-  }, [listings]);
+  }, [listings, isMobileMapOpen]);
 
   return (
-    <div
-      ref={mapRef}
-      className="w-full h-full rounded-2xl shadow-md border border-gray-200 dark:border-gray-700"
-    />
+    <>
+      {/* MOBILE MAP */}
+      <div className="lg:hidden w-full">
+        {!isMobileMapOpen && (
+          <button
+            onClick={() => setIsMobileMapOpen(true)}
+            className="w-full bg-emerald-600 text-white py-2 rounded-xl mb-3 text-center font-medium"
+          >
+            Показать карту
+          </button>
+        )}
+
+        {isMobileMapOpen && (
+          <div className="relative">
+            <div
+              ref={mapRef}
+              className="w-full h-[260px] rounded-xl border shadow-md"
+            />
+
+            <button
+              onClick={() => setIsMobileMapOpen(false)}
+              className="absolute top-2 right-2 bg-black/40 text-white px-3 py-1 rounded-lg text-sm"
+            >
+              Закрыть
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* DESKTOP MAP */}
+      <div className="hidden lg:block w-full h-full">
+        <div
+          ref={mapRef}
+          className="w-full h-full rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700"
+        />
+      </div>
+    </>
   );
 };
 

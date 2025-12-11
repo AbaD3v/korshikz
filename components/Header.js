@@ -58,6 +58,7 @@ export default function Header({ theme, setTheme, city, setCity }) {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setOpen(false);
   };
 
   const toggleTheme = () => setTheme(theme === "light" ? "dark" : "light");
@@ -71,20 +72,20 @@ export default function Header({ theme, setTheme, city, setCity }) {
           Korshi.kz
         </Link>
 
-        {/* Навигация */}
+        {/* Десктопная навигация */}
         <nav className="hidden md:flex items-center gap-6">
-          <Link href="/listings" className="hover:text-primary">Объявления</Link>
-          <Link href="/create" className="hover:text-primary">Создать</Link>
-          <Link href="/about" className="hover:text-primary">О нас</Link>
+          <Link href="/listings" className="hover:text-primary transition">Объявления</Link>
+          <Link href="/create" className="hover:text-primary transition">Создать</Link>
+          <Link href="/about" className="hover:text-primary transition">О нас</Link>
 
-          {/* выбор города */}
+          {/* Город */}
           <select
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            className={`rounded-lg px-2 py-1 text-sm border transition-colors duration-200 
+            className={`rounded-lg px-2 py-1 text-sm border transition
               ${theme === "light"
-                ? "bg-gray-100 text-gray-900 border-gray-300 focus:bg-white"
-                : "bg-gray-800 text-gray-200 border-gray-700 focus:bg-gray-700"}`}
+                ? "bg-gray-100 text-gray-900 border-gray-300"
+                : "bg-gray-800 text-gray-200 border-gray-700"}`}
           >
             <option>Алматы</option>
             <option>Астана</option>
@@ -94,27 +95,27 @@ export default function Header({ theme, setTheme, city, setCity }) {
           </select>
 
           {/* Тема */}
-          <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700">
-            {theme === "light" ? <Moon size={20} /> : <Sun size={20} className="text-yellow-400" />}
+          <button 
+            onClick={toggleTheme}
+            className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+          >
+            {theme === "light" ? <Moon size={20} /> : <Sun size={20} />}
           </button>
 
           {/* Авторизация */}
           {user ? (
             <div className="flex items-center gap-3">
 
-              {/* 🔥 КНОПКА ЧАТОВ */}
               <Link
                 href="/chat"
                 className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-xl 
                            hover:bg-gray-200 dark:hover:bg-gray-700 transition"
               >
-                <MessageCircle size={18} className="text-primary" />
+                <MessageCircle size={18} />
                 Чаты
               </Link>
 
-              <ProfileButton
-                user={profile ?? { id: user?.id, username: user?.email ?? "User", avatar_url: null }}
-              />
+              <ProfileButton user={profile ?? { id: user?.id }} />
 
               <button
                 onClick={handleLogout}
@@ -141,39 +142,65 @@ export default function Header({ theme, setTheme, city, setCity }) {
           )}
         </nav>
 
-        {/* Мобильное меню */}
+        {/* Мобильное меню кнопка */}
         <button
           onClick={() => setOpen(!open)}
-          className="md:hidden p-2 text-gray-600 dark:text-gray-300"
+          className="md:hidden p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition"
         >
           {open ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
 
-      {/* выпадающее меню */}
+      {/* Мобильное меню */}
       {open && (
-        <div className="md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
-          <div className="flex flex-col p-4 space-y-3">
+        <div className="md:hidden bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 animate-fadeIn">
+          <div className="flex flex-col p-4 space-y-4">
+
             <Link href="/listings" onClick={() => setOpen(false)}>Объявления</Link>
             <Link href="/create" onClick={() => setOpen(false)}>Создать</Link>
             <Link href="/about" onClick={() => setOpen(false)}>О нас</Link>
+
+            {/* Город на мобиле */}
+            <div className="flex flex-col">
+              <label className="text-sm mb-1">Город</label>
+              <select
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className="rounded-lg px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700"
+              >
+                <option>Алматы</option>
+                <option>Астана</option>
+                <option>Актобе</option>
+                <option>Шымкент</option>
+                <option>Караганда</option>
+              </select>
+            </div>
+
+            {/* Темная тема */}
+            <button
+              onClick={toggleTheme}
+              className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg"
+            >
+              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+              Сменить тему
+            </button>
 
             {user && (
               <Link
                 href="/chat"
                 onClick={() => setOpen(false)}
-                className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-xl"
+                className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg"
               >
-                <MessageCircle size={16} /> Чаты
+                <MessageCircle size={18} /> Чаты
               </Link>
             )}
 
             {user ? (
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-1 bg-red-500 text-white px-3 py-1 rounded-xl hover:bg-red-600"
+                className="flex items-center gap-2 bg-red-500 text-white px-3 py-2 rounded-lg"
               >
-                <LogOut size={16} /> Выйти
+                <LogOut size={18} /> Выйти
               </button>
             ) : (
               <>
