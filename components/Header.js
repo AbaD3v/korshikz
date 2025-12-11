@@ -140,7 +140,7 @@ export function Header({ theme, setTheme, city, setCity }) {
         {/* LOGO */}
         <Link href="/" className="flex items-center gap-3">
           <Image
-            src="/logo.png"
+            src="/logo.jpg"
             alt="Korshi.kz logo"
             width={40}
             height={40}
