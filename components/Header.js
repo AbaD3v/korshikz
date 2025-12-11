@@ -1,10 +1,12 @@
 // components/HeaderVariants.jsx
+"use client";
+
 import Link from "next/link";
+import Image from "next/image";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
 import ProfileButton from "./ProfileButton";
-import Image from "next/image";
 import {
   Moon,
   Sun,
@@ -20,52 +22,52 @@ import {
 } from "lucide-react";
 
 /**
- * Improved Header (modern/default emphasis)
+ * HeaderVariants.jsx
+ * - Header: modern/default header with logo
+ * - HeaderVisionPro: iOS Vision Pro styled floating header
  *
- * - Акцент на трех кнопках: Объявления, Создать, О нас
- * - "Создать" — акцентная кнопка (градент/пилл)
- * - "Объявления" и "О нас" — аккуратные дефолтные кнопки (подсветка при hover/active)
- * - Сохранена логика supabase / profile / роутер
- * - Клавиатурная доступность (focus-visible)
- *
- * Usage:
- * import Header from "./components/HeaderVariants";
- * <Header theme={theme} setTheme={setTheme} city={city} setCity={setCity} />
+ * Make sure your logo file is at: /public/logo.png
  */
 
+/* ------------------ auth/profile hook ------------------ */
 function useAuthProfile(setUser, setProfile, router) {
   useEffect(() => {
     let mounted = true;
     const fetchUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      const authUser = data?.user || null;
-      if (!mounted) return;
-      setUser(authUser);
+      try {
+        const { data } = await supabase.auth.getUser();
+        const authUser = data?.user || null;
+        if (!mounted) return;
+        setUser(authUser);
 
-      if (authUser) {
-        const { data: p } = await supabase
-          .from("profiles")
-          .select("id, username, avatar_url, isOnboarded")
-          .eq("id", authUser.id)
-          .maybeSingle();
-
-        if (!p) {
-          const { data: created } = await supabase
+        if (authUser) {
+          const { data: p } = await supabase
             .from("profiles")
-            .insert([{ id: authUser.id, isOnboarded: false }])
-            .select()
+            .select("id, username, avatar_url, isOnboarded")
+            .eq("id", authUser.id)
             .maybeSingle();
 
-          setProfile(created);
-          if (router.pathname !== "/onboarding") router.push("/onboarding");
-        } else {
-          setProfile(p);
-          if (p.isOnboarded === false && router.pathname !== "/onboarding") {
-            router.push("/onboarding");
+          if (!p) {
+            const { data: created } = await supabase
+              .from("profiles")
+              .insert([{ id: authUser.id, isOnboarded: false }])
+              .select()
+              .maybeSingle();
+
+            setProfile(created);
+            if (router.pathname !== "/onboarding") router.push("/onboarding");
+          } else {
+            setProfile(p);
+            if (p.isOnboarded === false && router.pathname !== "/onboarding") {
+              router.push("/onboarding");
+            }
           }
+        } else {
+          setProfile(null);
         }
-      } else {
-        setProfile(null);
+      } catch (err) {
+        // ignore fetch errors in SSR/build time contexts
+        console.warn("useAuthProfile fetch error:", err);
       }
     };
 
@@ -81,11 +83,14 @@ function useAuthProfile(setUser, setProfile, router) {
       mounted = false;
       try {
         listener.subscription.unsubscribe();
-      } catch (e) {}
+      } catch (e) {
+        // no-op
+      }
     };
   }, [router, setUser, setProfile]);
 }
 
+/* ------------------ Header (default) ------------------ */
 export function Header({ theme, setTheme, city, setCity }) {
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState(null);
@@ -95,12 +100,18 @@ export function Header({ theme, setTheme, city, setCity }) {
   useAuthProfile(setUser, setProfile, router);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn("Logout error", e);
+    }
     setUser(null);
     setOpen(false);
+    // optionally redirect to home
+    // router.push("/");
   };
 
-  const toggleTheme = () => setTheme(theme === "light" ? "dark" : "light");
+  const toggleTheme = () => setTheme && setTheme(theme === "light" ? "dark" : "light");
 
   const focusRing =
     "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500";
@@ -112,7 +123,6 @@ export function Header({ theme, setTheme, city, setCity }) {
   ];
 
   const isActive = (href) => {
-    // точное совпадение или начало (для вложенных роутов)
     return router.pathname === href || router.pathname.startsWith(href + "/");
   };
 
@@ -129,6 +139,14 @@ export function Header({ theme, setTheme, city, setCity }) {
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
         {/* LOGO */}
         <Link href="/" className="flex items-center gap-3">
+          <Image
+            src="/logo.png"
+            alt="Korshi.kz logo"
+            width={40}
+            height={40}
+            className="rounded-xl select-none"
+            priority
+          />
           <span
             className={`
               text-xl font-extrabold tracking-tight
@@ -136,24 +154,15 @@ export function Header({ theme, setTheme, city, setCity }) {
               bg-gradient-to-r from-slate-900 to-indigo-600 dark:from-white dark:to-blue-300
             `}
           >
-            <Image
-          src="/logo.png"   // ⬅ сюда твой логотип
-          alt="Korshi.kz"
-          width={40}
-          height={40}
-          className="rounded-xl select-none"
-          priority
-        />
             Korshi.kz
           </span>
         </Link>
 
-        {/* NAV */}
+        {/* NAV (desktop) */}
         <nav className="hidden md:flex items-center gap-4 flex-1 justify-center">
           <div className="flex items-center gap-3">
             {nav.map((item) => {
               const active = isActive(item.href);
-              // kind: primary = create, default = normal
               if (item.kind === "primary") {
                 return (
                   <Link
@@ -173,7 +182,6 @@ export function Header({ theme, setTheme, city, setCity }) {
                 );
               }
 
-              // default / neutral button
               return (
                 <Link
                   key={item.href}
@@ -195,11 +203,11 @@ export function Header({ theme, setTheme, city, setCity }) {
           </div>
         </nav>
 
-        {/* RIGHT ACTIONS */}
+        {/* RIGHT ACTIONS (desktop) */}
         <div className="hidden md:flex items-center gap-3">
           <select
             value={city}
-            onChange={(e) => setCity(e.target.value)}
+            onChange={(e) => setCity && setCity(e.target.value)}
             className={`rounded-full px-3 py-1 text-sm border ${theme === "light" ? "bg-white text-gray-900 border-gray-200" : "bg-gray-800 text-gray-200 border-gray-700"} transition ${focusRing}`}
             aria-label="Выбрать город"
           >
@@ -278,7 +286,7 @@ export function Header({ theme, setTheme, city, setCity }) {
               <label className="text-sm mb-2">Город</label>
               <select
                 value={city}
-                onChange={(e) => { setCity(e.target.value); setOpen(false); }}
+                onChange={(e) => { setCity && setCity(e.target.value); setOpen(false); }}
                 className="rounded-lg px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
               >
                 <option>Алматы</option>
@@ -319,4 +327,134 @@ export function Header({ theme, setTheme, city, setCity }) {
     </header>
   );
 }
+
+/* ------------------ HeaderVisionPro (iOS Vision Pro style) ------------------ */
+export function HeaderVisionPro({ theme, setTheme, city, setCity }) {
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const router = useRouter();
+
+  useAuthProfile(setUser, setProfile, router);
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn("Logout error", e);
+    }
+    setUser(null);
+  };
+
+  const toggleTheme = () => setTheme && setTheme(theme === "light" ? "dark" : "light");
+
+  const nav = [
+    { label: "Объявления", href: "/listings", Icon: List },
+    { label: "Создать", href: "/create", Icon: PlusCircle, accent: true },
+    { label: "О нас", href: "/about", Icon: Info },
+  ];
+
+  const isActive = (href) => router.pathname === href || router.pathname.startsWith(href + "/");
+
+  return (
+    <>
+      <div className="fixed left-1/2 -translate-x-1/2 top-6 z-60">
+        <div
+          className={`
+            flex items-center gap-4 px-4 py-3 rounded-2xl
+            bg-white/30 dark:bg-black/30
+            backdrop-blur-md
+            border border-white/10 dark:border-white/5
+            shadow-2xl
+            min-w-[680px] max-w-[90vw]
+          `}
+        >
+          <Link href="/" className="flex items-center gap-3 shrink-0">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-inner">
+              K
+            </div>
+            <div className="hidden md:block">
+              <div className="text-lg font-semibold text-white/90">Korshi.kz</div>
+              <div className="text-xs text-white/60">жильё и соседи</div>
+            </div>
+          </Link>
+
+          <div className="flex-1 flex items-center justify-center gap-3">
+            {nav.map((item) => {
+              const active = isActive(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`
+                    inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-medium
+                    transition transform
+                    ${active ? "scale-105 ring-2 ring-white/20" : "hover:scale-102"}
+                    ${item.accent ? "bg-gradient-to-r from-cyan-400 to-blue-600 text-black/90" : "bg-white/6 text-white/90"}
+                  `}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <item.Icon size={16} />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={city}
+              onChange={(e) => setCity && setCity(e.target.value)}
+              className="rounded-full px-3 py-1 text-sm border border-white/10 bg-white/5 text-white/90"
+            >
+              <option>Алматы</option>
+              <option>Астана</option>
+              <option>Актобе</option>
+              <option>Шымкент</option>
+              <option>Караганда</option>
+            </select>
+
+            <button onClick={toggleTheme} className="p-2 rounded-lg bg-white/5 text-white/90">
+              {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
+            </button>
+
+            {user ? (
+              <>
+                <Link href="/chat" className="p-2 rounded-lg bg-white/6 text-white/90">
+                  <MessageCircle size={16} />
+                </Link>
+                <ProfileButton user={profile ?? { id: user?.id }} />
+                <button onClick={handleLogout} className="px-3 py-1 rounded-full bg-red-500 text-white">
+                  Выйти
+                </button>
+              </>
+            ) : (
+              <>
+                <Link href="/auth/login" className="px-3 py-1 rounded-full bg-white/80 text-black">
+                  Войти
+                </Link>
+                <Link href="/auth/register" className="px-3 py-1 rounded-full border border-white/20 text-white/90">
+                  Регистрация
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* fallback for small screens */}
+      <div className="md:hidden sticky top-0 z-50 bg-transparent">
+        <div className="flex items-center justify-between px-3 py-2">
+          <Link href="/" className="text-lg font-bold">Korshi.kz</Link>
+          <div className="flex items-center gap-2">
+            <button onClick={toggleTheme} className="p-2 rounded-lg bg-white/5">
+              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* default export */
 export default Header;
