@@ -1,7 +1,7 @@
 // pages/listings/index.js
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/router";
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from "@/lib/supabaseClient";
 import { motion } from "framer-motion";
 
 import ListingMap from "/components/ListingMap";
@@ -109,7 +109,7 @@ export default function Listings({ selectedCity }) {
     setPriceMin(0);
     setPriceMax(1000000);
   }, []);
-x
+
   /* GEO LOCATION */
   useEffect(() => {
     if (!geoEnabled) {
