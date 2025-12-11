@@ -157,30 +157,47 @@ const DevCard: React.FC<{ dev: Dev; onOpen: (d: Dev) => void }> = React.memo(({ 
         if (e.key === "Enter" || e.key === " ") onOpen(dev);
       }}
       aria-label={`О карточке разработчика ${dev.name}`}
-      className="w-full bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm flex gap-4 items-start transition-transform hover:translate-y-0.5 active:translate-y-0 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer"
+      className="w-full h-full bg-white dark:bg-gray-800 p-5 sm:p-6 rounded-lg shadow-md hover:shadow-lg flex flex-col gap-4 items-stretch transition-shadow duration-300 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer border border-gray-200 dark:border-gray-700"
     >
-      <div className="flex-shrink-0">
-        <Avatar src={dev.photo} name={dev.name} />
+      {/* Аватар контейнер */}
+      <div className="flex justify-center">
+        <div className="flex-shrink-0">
+          <Avatar src={dev.photo} name={dev.name} size={100} />
+        </div>
       </div>
 
-      <div className="flex-1 min-w-0">
-        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{dev.name}</h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">{dev.role}</p>
-        <Bio text={dev.bio} maxChars={100} />
-
-        <div className="mt-3 flex items-center justify-between">
-          <SocialLinks social={dev.social} size="sm" />
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isValidUrl(dev.social?.github)) window.open(dev.social!.github, "_blank", "noopener,noreferrer");
-            }}
-            className="ml-2 inline-flex items-center gap-2 text-sm font-medium px-3 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-900"
-            aria-label={`Открыть профиль ${dev.name} на GitHub`}
-          >
-            Подробнее <FaExternalLinkAlt className="text-xs" />
-          </button>
+      {/* Основная информация */}
+      <div className="flex-1 flex flex-col items-center text-center">
+        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 line-clamp-2">{dev.name}</h3>
+        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-2 line-clamp-2">{dev.role}</p>
+        
+        {/* Bio */}
+        <div className="mt-3 w-full flex-1 flex flex-col justify-start">
+          {dev.bio && (
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 line-clamp-3">
+              {dev.bio}
+            </p>
+          )}
         </div>
+
+        {/* Социальные ссылки */}
+        <div className="mt-4 w-full flex justify-center">
+          <SocialLinks social={dev.social} size="sm" />
+        </div>
+      </div>
+
+      {/* Кнопка подробнее */}
+      <div className="mt-auto pt-4 border-t border-gray-200 dark:border-gray-700 w-full">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen(dev);
+          }}
+          className="w-full inline-flex items-center justify-center gap-2 text-sm font-medium px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+          aria-label={`Открыть профиль ${dev.name}`}
+        >
+          Подробнее <FaExternalLinkAlt className="text-xs" />
+        </button>
       </div>
     </article>
   );
@@ -556,17 +573,17 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
       </div>
 
       {/* Grid with animated appearance */}
-      <div ref={containerRef} className="grid grid-cols-1 gap-4" aria-live="polite">
+      <div ref={containerRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full" aria-live="polite">
         {filtered.map((dev, i) => (
           <div
             key={dev.name + i}
             data-animated
+            className="h-full"
             style={{
               transition: prefersReduced ? "none" : "transform 360ms cubic-bezier(.2,.9,.2,1), opacity 360ms",
               transform: prefersReduced ? "none" : "translateY(8px)",
               opacity: prefersReduced ? 1 : 0,
             }}
-            // не трогаем содержимое DevCard — внешне карточки должны выглядеть одинаково
           >
             <DevCard dev={dev} onOpen={(d) => openProfile(d)} />
           </div>
