@@ -488,23 +488,6 @@ export default function ListingDetail() {
 </div> {/* <-- closes p-6 wrapper */ }
 </motion.div>
 </div>
-
-{/* Sticky mobile action bar (prevents overflow and keeps buttons accessible) */}
-<div className="sm:hidden">
-  <div className="fixed bottom-4 left-4 right-4 z-50">
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-2 shadow-lg">
-      {/* horizontal scroll if too many buttons; inner container min-width to allow natural sizing */}
-      <div className="flex gap-2 min-w-max overflow-x-auto px-1">
-        <button onClick={startChat} className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm whitespace-nowrap">Написать</button>
-        <button onClick={openWhatsApp} className="px-3 py-2 border rounded-lg text-sm whitespace-nowrap">WhatsApp</button>
-        <button onClick={onCall} className="px-3 py-2 border rounded-lg text-sm whitespace-nowrap">Позвонить</button>
-        <button onClick={onReport} className="px-3 py-2 border rounded-lg text-sm text-red-600 whitespace-nowrap">Пожаловаться</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-
       {/* Lightbox */}
       {lightboxOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85">
