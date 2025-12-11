@@ -1,11 +1,12 @@
 // pages/listings/[id].js
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/hooks/utils/supabase/client";
 import MapView from "@/components/mapview";
 
+// MOBILE-FIRST, production-ready Listing detail with thorough responsive fixes
 export default function ListingDetail() {
   const router = useRouter();
   const { id } = router.query;
@@ -23,8 +24,20 @@ export default function ListingDetail() {
 
   // new: mobile map fullscreen state
   const [mobileMapOpen, setMobileMapOpen] = useState(false);
+  // detect mobile/tablet for feature toggles
+  const [isMobile, setIsMobile] = useState(false);
 
-  // helpers
+  // touch swipe support
+  const touchStartX = useRef(null);
+  const touchEndX = useRef(null);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const formatPrice = (val) =>
     val == null ? "" : new Intl.NumberFormat("ru-RU").format(Number(val)) + " ₸";
 
@@ -34,10 +47,7 @@ export default function ListingDetail() {
       if (Array.isArray(raw)) return raw.filter(Boolean);
       if (typeof raw === "string") {
         const cleaned = raw.replace(/^\s*\{|\}\s*$/g, "").replace(/["\[\]]/g, "");
-        return cleaned
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
+        return cleaned.split(",").map((s) => s.trim()).filter(Boolean);
       }
       return [];
     } catch {
@@ -48,13 +58,13 @@ export default function ListingDetail() {
   // keyboard navigation for gallery + close fullscreen map
   useEffect(() => {
     const onKey = (e) => {
-      if (!images.length) return;
-      if (e.key === "ArrowRight") setActiveIndex((i) => Math.min(i + 1, images.length - 1));
-      if (e.key === "ArrowLeft") setActiveIndex((i) => Math.max(i - 1, 0));
       if (e.key === "Escape") {
         setLightboxOpen(false);
         setMobileMapOpen(false);
       }
+      if (!images.length) return;
+      if (e.key === "ArrowRight") setActiveIndex((i) => Math.min(i + 1, images.length - 1));
+      if (e.key === "ArrowLeft") setActiveIndex((i) => Math.max(i - 1, 0));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -208,6 +218,23 @@ export default function ListingDetail() {
     setLightboxOpen(true);
   };
 
+  // touch handlers for swipe gallery (mobile UX)
+  const onTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const onTouchMove = (e) => {
+    touchEndX.current = e.touches[0].clientX;
+  };
+  const onTouchEnd = () => {
+    if (touchStartX.current == null || touchEndX.current == null) return;
+    const dx = touchStartX.current - touchEndX.current;
+    const threshold = 50; // px
+    if (dx > threshold) nextImage();
+    else if (dx < -threshold) prevImage();
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
+
   // prevent background scroll while mobile map fullscreen is open
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -240,21 +267,28 @@ export default function ListingDetail() {
       <Head>
         <title>{listing.title ? `${listing.title} — Объявление` : "Объявление"}</title>
         <meta name="description" content={listing.description || listing.title || ""} />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
       </Head>
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 py-6 sm:py-8 overflow-x-hidden">
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden border border-gray-200 dark:border-gray-700"
         >
           {/* gallery */}
-          <div className="relative w-full h-[320px] sm:h-[520px] bg-black">
+          <div
+            className="relative w-full h-[280px] sm:h-[520px] bg-black"
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+          >
             <div className="absolute inset-0 flex items-center justify-between px-3 pointer-events-none">
               <button
                 onClick={prevImage}
                 aria-label="Предыдущее фото"
                 className="pointer-events-auto bg-black/40 text-white p-2 rounded-full"
+                style={{ backdropFilter: 'blur(4px)' }}
               >
                 ‹
               </button>
@@ -262,6 +296,7 @@ export default function ListingDetail() {
                 onClick={nextImage}
                 aria-label="Следующее фото"
                 className="pointer-events-auto bg-black/40 text-white p-2 rounded-full"
+                style={{ backdropFilter: 'blur(4px)' }}
               >
                 ›
               </button>
@@ -279,6 +314,7 @@ export default function ListingDetail() {
                       alt={`Фото ${i + 1}`}
                       className="w-full h-full object-cover"
                       onClick={() => openLightbox(i)}
+                      loading="lazy"
                       style={{ cursor: "zoom-in" }}
                     />
                     <div className="absolute bottom-3 left-3 bg-black/60 text-white px-2 py-1 rounded-md text-sm">
@@ -296,22 +332,18 @@ export default function ListingDetail() {
                   key={i}
                   onClick={() => setActiveIndex(i)}
                   aria-label={`Показать фото ${i + 1}`}
-                  className={`w-12 h-8 rounded overflow-hidden border ${
-                    i === activeIndex ? "ring-2 ring-emerald-500" : "border-white/30"
-                  }`}
+                  className={`w-12 h-8 rounded overflow-hidden border ${i === activeIndex ? "ring-2 ring-emerald-500" : "border-white/30"}`}
                 >
-                  <img src={src} className="w-full h-full object-cover" />
+                  <img src={src} className="w-full h-full object-cover" loading="lazy" />
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="p-6 sm:p-7 space-y-5">
+          <div className="p-4 sm:p-7 space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <h1
-                  className="title-clamp text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 dark:text-white"
-                >
+                <h1 className="title-clamp text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
                   {listing.title}
                 </h1>
 
@@ -339,15 +371,13 @@ export default function ListingDetail() {
                 <div className="flex flex-col sm:flex-row gap-2">
                   <button
                     onClick={toggleSave}
-                    className={`px-3 py-2 rounded-lg border flex-1 text-center ${
-                      saved ? "bg-emerald-600 text-white" : "bg-white text-gray-700"
-                    }`}
+                    className={`px-3 py-2 rounded-lg border flex-1 text-center whitespace-nowrap ${saved ? "bg-emerald-600 text-white" : "bg-white text-gray-700"}`}
                     aria-pressed={saved}
                   >
                     {saved ? "Сохранено" : "Сохранить"}
                   </button>
 
-                  <button onClick={onShare} className="px-3 py-2 rounded-lg border bg-white flex-1 text-center">
+                  <button onClick={onShare} className="px-3 py-2 rounded-lg border bg-white flex-1 text-center whitespace-nowrap">
                     Поделиться
                   </button>
                 </div>
@@ -358,7 +388,7 @@ export default function ListingDetail() {
             {listing.description && (
               <section>
                 <h2 className="text-lg font-semibold mb-2">Описание</h2>
-                <p className="text-gray-600 dark:text-gray-300 leading-relaxed">{listing.description}</p>
+                <p className="text-gray-600 dark:text-gray-300 leading-relaxed break-words">{listing.description}</p>
               </section>
             )}
 
@@ -377,7 +407,12 @@ export default function ListingDetail() {
 
                 <div className="relative">
                   <div className="w-full h-[250px] sm:h-[360px] rounded-xl overflow-hidden border">
-                    <MapView coordinates={[listing.lat, listing.lng]} height="100%" showCard={false} />
+                    <MapView
+                      coordinates={[listing.lat, listing.lng]}
+                      height="100%"
+                      showCard={false}
+                      disableScrollZoom={isMobile} /* pass to MapView if supported */
+                    />
                   </div>
 
                   <button
@@ -392,25 +427,26 @@ export default function ListingDetail() {
             )}
 
             {/* OWNER / ACTIONS */}
-            <div className="bg-gray-50 dark:bg-gray-800 border p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-start sm:items-center gap-4 min-w-0">
+            <div className="bg-gray-50 dark:bg-gray-800 border p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start sm:items-center gap-3 min-w-0">
                 <img
                   src={owner?.avatar_url || "/default-avatar.png"}
-                  className="w-14 h-14 rounded-full object-cover border flex-shrink-0"
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover border flex-shrink-0"
                   alt="avatar"
                 />
 
                 <div className="min-w-0">
-                  <div className="font-semibold text-lg truncate">{owner?.full_name || "Без имени"}</div>
+                  <div className="font-semibold text-base sm:text-lg truncate">{owner?.full_name || "Без имени"}</div>
                   <div className="text-sm text-gray-500 truncate">{owner?.university ? `${owner.university}${owner.course ? ` — ${owner.course} курс` : ""}` : ""}</div>
                 </div>
               </div>
 
-              <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
-                <button onClick={startChat} className="px-4 py-2 bg-emerald-600 text-white rounded-lg w-full sm:w-auto">Написать</button>
-                <button onClick={openWhatsApp} className="px-4 py-2 border rounded-lg w-full sm:w-auto">WhatsApp</button>
-                <button onClick={onCall} className="px-4 py-2 border rounded-lg w-full sm:w-auto">Позвонить</button>
-                <button onClick={onReport} className="px-4 py-2 border rounded-lg text-red-600 w-full sm:w-auto">Пожаловаться</button>
+              {/* action buttons group */}
+              <div className="w-full sm:w-auto flex gap-2 flex-col sm:flex-row">
+                <button onClick={startChat} className="px-4 py-2 bg-emerald-600 text-white rounded-lg w-full sm:w-auto whitespace-nowrap">Написать</button>
+                <button onClick={openWhatsApp} className="px-4 py-2 border rounded-lg w-full sm:w-auto whitespace-nowrap">WhatsApp</button>
+                <button onClick={onCall} className="px-4 py-2 border rounded-lg w-full sm:w-auto whitespace-nowrap">Позвонить</button>
+                <button onClick={onReport} className="px-4 py-2 border rounded-lg text-red-600 w-full sm:w-auto whitespace-nowrap">Пожаловаться</button>
               </div>
             </div>
 
@@ -420,14 +456,25 @@ export default function ListingDetail() {
             </div>
           </div>
         </motion.div>
+
+        {/* Sticky mobile action bar (prevents overflow and keeps buttons accessible) */}
+        <div className="sm:hidden">
+          <div className="fixed bottom-4 left-4 right-4 z-50">
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3 shadow-lg flex gap-2">
+              <button onClick={startChat} className="flex-1 bg-emerald-600 text-white px-3 py-2 rounded-lg">Написать</button>
+              <button onClick={openWhatsApp} className="flex-1 border px-3 py-2 rounded-lg">WhatsApp</button>
+              <button onClick={onReport} className="flex-1 border text-red-600 px-3 py-2 rounded-lg">Пожаловаться</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Lightbox */}
       {lightboxOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85">
           <button className="absolute top-6 right-6 text-white text-2xl" onClick={() => setLightboxOpen(false)} aria-label="Закрыть">✕</button>
           <button className="absolute left-6 text-white text-3xl" onClick={prevImage} aria-label="Предыдущее">‹</button>
-          <div className="max-w-[90%] max-h-[90%]">
+          <div className="max-w-[96%] max-h-[92%]">
             <img src={images[activeIndex]} className="max-w-full max-h-[90vh] object-contain" alt={`Фото ${activeIndex + 1}`} />
             <div className="text-center text-white mt-3">{activeIndex + 1} / {images.length}</div>
           </div>
@@ -438,7 +485,7 @@ export default function ListingDetail() {
       {/* Fullscreen mobile map modal */}
       {mobileMapOpen && (
         <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/80 backdrop-blur z-50 flex flex-col">
-          <div className="flex items-center justify-between p-4 text-white">
+          <div className="flex items-center justify-between p-3 text-white">
             <div className="text-lg font-semibold">Карта</div>
             <div className="flex items-center gap-2">
               <button
@@ -457,16 +504,14 @@ export default function ListingDetail() {
           </div>
 
           <div className="flex-1">
-            <MapView coordinates={[listing.lat, listing.lng]} height="100%" showCard={false} />
+            <MapView coordinates={[listing.lat, listing.lng]} height="100%" showCard={false} disableScrollZoom={false} />
           </div>
         </div>
       )}
 
-      {/* small inline styles for title clamp on small screens */}
+      {/* title clamp & small responsive tweaks */}
       <style jsx>{`
-        .title-clamp { /* fallback: clamp only on small screens to avoid unexpected truncation on desktop */
-          display: block;
-        }
+        .title-clamp { display: block; }
         @media (max-width: 640px) {
           .title-clamp {
             display: -webkit-box;
@@ -476,6 +521,9 @@ export default function ListingDetail() {
             word-break: break-word;
           }
         }
+
+        /* ensure long buttons/text don't overflow the viewport */
+        :global(body) { overscroll-behavior-y: contain; }
       `}</style>
     </>
   );
@@ -487,7 +535,7 @@ export default function ListingDetail() {
 
 function DetailCard({ label, children }) {
   return (
-    <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-xl border">
+    <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-xl border">
       <div className="text-sm text-gray-500 mb-1">{label}</div>
       <div className="text-base font-medium">{children}</div>
     </div>
