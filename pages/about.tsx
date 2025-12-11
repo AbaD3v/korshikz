@@ -1,12 +1,11 @@
-import React, { useMemo, useState, useCallback, useEffect } from "react";
-import { FaLinkedin, FaGithub, FaSearch, FaExternalLinkAlt } from "react-icons/fa";
+import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import { FaLinkedin, FaGithub, FaSearch, FaExternalLinkAlt, FaSortAlphaDown, FaSortAlphaUp } from "react-icons/fa";
 
-// Mobile-first, production-ready About component
-// - Improved mobile layout (single-column cards, full-width avatars, compact controls)
-// - Truncated bios with "Показать ещё" toggle
-// - Modal becomes full-screen on small devices and centered on larger screens
-// - Reduced paddings and touch-friendly tap targets
-// - Accessibility: keyboard handlers, aria attributes, focus management
+// -----------------------------
+// ВНИМАНИЕ:
+// DevCard / Avatar / SocialLinks / Bio — скопированы/сохранены буквально,
+// чтобы внешний вид карточек НЕ изменился.
+// -----------------------------
 
 type Social = {
   linkedin?: string;
@@ -188,21 +187,99 @@ const DevCard: React.FC<{ dev: Dev; onOpen: (d: Dev) => void }> = React.memo(({ 
 });
 DevCard.displayName = "DevCard";
 
+// -----------------------------
+// Новые утилиты и компоненты: debounce, toast, chips, vCard generator, focus trap
+// -----------------------------
+function useDebounced<T>(value: T, delay = 300) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setV(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return v;
+}
+
+const Toast: React.FC<{ message?: string; onClose: () => void }> = ({ message, onClose }) => {
+  useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(() => onClose(), 2600);
+    return () => clearTimeout(t);
+  }, [message, onClose]);
+
+  if (!message) return null;
+  return (
+    <div
+      role="status"
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-60 bg-gray-900 text-white text-sm px-4 py-2 rounded-full shadow-lg"
+      aria-live="polite"
+    >
+      {message}
+    </div>
+  );
+};
+
+// create vCard string
+const makeVCard = (dev: Dev) => {
+  const lines = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `FN:${dev.name}`,
+    dev.role ? `TITLE:${dev.role}` : "",
+    dev.social?.github ? `URL;TYPE=github:${dev.social.github}` : "",
+    dev.social?.linkedin ? `URL;TYPE=linkedin:${dev.social.linkedin}` : "",
+    "END:VCARD",
+  ].filter(Boolean);
+  return lines.join("\n");
+};
+
+// small helper to respect reduced motion user preference
+const prefersReducedMotion = () => {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+};
+
+// -----------------------------
+// Улучшенный About component
+// -----------------------------
 export default function About({ developers = DEFAULT_DEVS, title, description }: AboutProps) {
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounced(query, 260);
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [selected, setSelected] = useState<Dev | null>(null);
+  const [sort, setSort] = useState<"name-asc" | "name-desc" | "role">("name-asc");
+  const [toast, setToast] = useState<string | undefined>(undefined);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const prefersReduced = useMemo(() => prefersReducedMotion(), []);
 
+  // keyboard shortcuts: "/" to focus search
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "/" && document.activeElement !== searchRef.current) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (e.key === "Escape") {
+        setSelected(null);
+      }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
+  // roles list
   const roles = useMemo(() => {
     const setRoles = new Set<string>();
     developers.forEach((d) => setRoles.add(d.role));
     return ["all", ...Array.from(setRoles)];
   }, [developers]);
 
-  const normalizedQuery = query.trim().toLowerCase();
+  // normalized query & filters
+  const normalizedQuery = debouncedQuery.trim().toLowerCase();
 
+  // filtering + sorting
   const filtered = useMemo(() => {
-    return developers.filter((d) => {
+    let items = developers.filter((d) => {
       const matchQuery =
         !normalizedQuery ||
         d.name.toLowerCase().includes(normalizedQuery) ||
@@ -212,37 +289,208 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
       const matchRole = roleFilter === "all" || d.role === roleFilter;
       return matchQuery && matchRole;
     });
-  }, [developers, normalizedQuery, roleFilter]);
 
-  const clearSearch = useCallback(() => setQuery(""), []);
+    if (sort === "name-asc") items = items.sort((a, b) => a.name.localeCompare(b.name));
+    if (sort === "name-desc") items = items.sort((a, b) => b.name.localeCompare(a.name));
+    if (sort === "role") items = items.sort((a, b) => a.role.localeCompare(b.role));
 
+    return items;
+  }, [developers, normalizedQuery, roleFilter, sort]);
+
+  // animated card appearance: we will set inline style with delay for each card.
   useEffect(() => {
-    // Lock body scroll when modal is open (mobile friendly)
-    if (selected) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
+    // when list changes, small reflow to trigger transitions if not reduced motion
+    if (prefersReduced) return;
+    const el = containerRef.current;
+    if (!el) return;
+    // add a class to trigger transitions (cards already have base transition)
+    el.querySelectorAll("[data-animated]").forEach((node: Element, i) => {
+      (node as HTMLElement).style.transitionDelay = `${i * 60}ms`;
+      (node as HTMLElement).classList.add("opacity-100", "translate-y-0");
+    });
+  }, [filtered, prefersReduced]);
+
+  // lock scroll when modal open (mobile)
+  useEffect(() => {
+    if (selected) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
     return () => {
       document.body.style.overflow = "";
     };
   }, [selected]);
 
+  // modal focus trap
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!selected || !modalRef.current) return;
+    const modal = modalRef.current;
+    const focusable = modal.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Tab") {
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKey);
+    // focus the modal container first
+    (first || modal).focus();
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [selected]);
+
+  // handlers
+  const clearSearch = useCallback(() => setQuery(""), []);
+  const toggleRole = useCallback((r: string) => setRoleFilter((s) => (s === r ? "all" : r)), []);
+  const openProfile = useCallback((d: Dev) => setSelected(d), []);
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setToast("Ссылка скопирована в буфер обмена");
+    } catch {
+      setToast("Не удалось скопировать");
+    }
+  };
+
+  const downloadVCard = useCallback((d: Dev) => {
+    const v = makeVCard(d);
+    const blob = new Blob([v], { type: "text/vcard;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${d.name.replace(/\s+/g, "_")}.vcf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setToast("vCard загружается");
+  }, []);
+
+  // touch swipe down to close modal (mobile)
+  useEffect(() => {
+    if (!selected) return;
+    let startY = 0;
+    const el = modalRef.current;
+    if (!el) return;
+
+    const touchStart = (e: TouchEvent) => {
+      startY = e.touches[0].clientY;
+    };
+    const touchMove = (e: TouchEvent) => {
+      const dy = e.touches[0].clientY - startY;
+      if (dy > 120) {
+        setSelected(null);
+      }
+    };
+    el.addEventListener("touchstart", touchStart);
+    el.addEventListener("touchmove", touchMove);
+    return () => {
+      el.removeEventListener("touchstart", touchStart);
+      el.removeEventListener("touchmove", touchMove);
+    };
+  }, [selected]);
+
+  // small keyboard nav inside modal: ArrowLeft/ArrowRight -> prev/next developer
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        const idx = filtered.findIndex((x) => x.name === selected.name && x.role === selected.role);
+        if (idx === -1) return;
+        const nextIdx = e.key === "ArrowRight" ? (idx + 1) % filtered.length : (idx - 1 + filtered.length) % filtered.length;
+        setSelected(filtered[nextIdx]);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected, filtered]);
+
+  // counts per role for chips
+  const roleCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    developers.forEach((d) => {
+      m[d.role] = (m[d.role] || 0) + 1;
+    });
+    return m;
+  }, [developers]);
+
   return (
-    <section className="p-4 sm:p-8 max-w-4xl mx-auto">
+    <section className="p-4 sm:p-8 max-w-5xl mx-auto">
       <header className="mb-4">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">{title || "О проекте Korshi.kz"}</h1>
-        <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">{description || "Korshi.kz — платформа для поиска соседей и жилья по Казахстану. Создана для студентов, айтишников и всех, кто ищет комфортное жильё и дружелюбных соседей 💙"}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1
+              className="text-2xl sm:text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600"
+            >
+              {title || "О проекте Korshi.kz"}
+            </h1>
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1 max-w-2xl">
+              {description ||
+                "Korshi.kz — платформа для поиска соседей и жилья по Казахстану. Создана для студентов, айтишников и всех, кто ищет комфортное жильё и дружелюбных соседей 💙"}
+            </p>
+
+            {/* stats */}
+            <div className="mt-3 flex items-center gap-3 text-sm text-gray-500">
+              <div className="inline-flex items-center gap-2">
+                <span className="font-medium text-gray-900 dark:text-gray-100">{developers.length}</span>
+                <span>участник{developers.length > 1 ? "ов" : ""}</span>
+              </div>
+              <div className="inline-flex items-center gap-2">
+                <span className="font-medium text-gray-900 dark:text-gray-100">{filtered.length}</span>
+                <span>показано</span>
+              </div>
+            </div>
+          </div>
+
+          {/* action buttons */}
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={() => {
+                setSort((s) => (s === "name-asc" ? "name-desc" : "name-asc"));
+                setToast(`Сортировка: ${sort === "name-asc" ? "По имени (убыв.)" : "По имени (возр.)"}`);
+              }}
+              aria-label="Переключить сортировку"
+              className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400"
+            >
+              {sort === "name-asc" ? <FaSortAlphaDown /> : <FaSortAlphaUp />} {sort === "name-asc" ? "A → Z" : "Z → A"}
+            </button>
+            <button
+              onClick={() => {
+                setSort("role");
+                setToast("Сортировка: по роли");
+              }}
+              aria-label="Сортировать по роли"
+              className="hidden sm:inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400"
+            >
+              Роли
+            </button>
+          </div>
+        </div>
       </header>
 
       {/* Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
         <label className="relative w-full">
           <input
+            ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full pl-10 pr-10 py-2 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
-            placeholder="Поиск по имени, роли или биографии..."
+            placeholder="Поиск по имени, роли или биографии... (нажмите / для быстрого поиска)"
             aria-label="Поиск разработчиков"
           />
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
@@ -259,28 +507,73 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
           )}
         </label>
 
-        <select
-          value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          className="py-2 px-3 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none max-w-xs"
-          aria-label="Фильтр по роли"
-        >
-          {roles.map((r) => (
-            <option key={r} value={r}>
-              {r === "all" ? "Все роли" : r}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="py-2 px-3 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none max-w-xs"
+            aria-label="Фильтр по роли"
+          >
+            {roles.map((r) => (
+              <option key={r} value={r}>
+                {r === "all" ? "Все роли" : r}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as any)}
+            className="py-2 px-3 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none"
+            aria-label="Сортировка"
+          >
+            <option value="name-asc">Имя: A → Z</option>
+            <option value="name-desc">Имя: Z → A</option>
+            <option value="role">По роли</option>
+          </select>
+        </div>
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-1 gap-4">
-        {filtered.map((dev, i) => (
-          <DevCard key={dev.name + i} dev={dev} onOpen={(d) => setSelected(d)} />
+      {/* role chips */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          onClick={() => setRoleFilter("all")}
+          className={`px-3 py-1 rounded-full border ${roleFilter === "all" ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700"} text-sm`}
+          aria-pressed={roleFilter === "all"}
+        >
+          Все ({developers.length})
+        </button>
+        {Object.entries(roleCounts).map(([r, c]) => (
+          <button
+            key={r}
+            onClick={() => setRoleFilter((s) => (s === r ? "all" : r))}
+            className={`px-3 py-1 rounded-full border text-sm ${roleFilter === r ? "bg-blue-600 text-white border-blue-600" : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700"}`}
+            aria-pressed={roleFilter === r}
+          >
+            {r} ({c})
+          </button>
         ))}
       </div>
 
-      {/* Modal / Details (accessible) */}
+      {/* Grid with animated appearance */}
+      <div ref={containerRef} className="grid grid-cols-1 gap-4" aria-live="polite">
+        {filtered.map((dev, i) => (
+          <div
+            key={dev.name + i}
+            data-animated
+            style={{
+              transition: prefersReduced ? "none" : "transform 360ms cubic-bezier(.2,.9,.2,1), opacity 360ms",
+              transform: prefersReduced ? "none" : "translateY(8px)",
+              opacity: prefersReduced ? 1 : 0,
+            }}
+            // не трогаем содержимое DevCard — внешне карточки должны выглядеть одинаково
+          >
+            <DevCard dev={dev} onOpen={(d) => openProfile(d)} />
+          </div>
+        ))}
+      </div>
+
+      {/* Modal / Details */}
       {selected && (
         <div
           role="dialog"
@@ -290,8 +583,10 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
           onClick={() => setSelected(null)}
         >
           <div
+            ref={modalRef}
             onClick={(e) => e.stopPropagation()}
-            className="w-full h-[85vh] sm:h-auto sm:max-w-2xl bg-white dark:bg-gray-900 rounded-t-xl sm:rounded-2xl p-4 sm:p-6 shadow-2xl overflow-auto"
+            className="w-full h-[85vh] sm:h-auto sm:max-w-2xl bg-white dark:bg-gray-900 rounded-t-xl sm:rounded-2xl p-4 sm:p-6 shadow-2xl overflow-auto focus:outline-none"
+            tabIndex={-1}
             aria-live="polite"
           >
             <div className="flex items-start gap-4">
@@ -300,13 +595,31 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
                 <h4 className="text-lg font-bold text-gray-900 dark:text-gray-100">{selected.name}</h4>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{selected.role}</p>
               </div>
-              <button
-                onClick={() => setSelected(null)}
-                aria-label="Закрыть"
-                className="ml-2 p-2 rounded-full focus:ring-2 focus:ring-blue-400"
-              >
-                ✕
-              </button>
+              <div className="ml-2 flex gap-2 items-center">
+                <button
+                  onClick={() => {
+                    copyToClipboard(selected.social?.github || "");
+                  }}
+                  aria-label="Копировать ссылку на GitHub"
+                  className="p-2 rounded-full focus:ring-2 focus:ring-blue-400"
+                >
+                  📋
+                </button>
+                <button
+                  onClick={() => downloadVCard(selected)}
+                  aria-label="Скачать vCard"
+                  className="p-2 rounded-full focus:ring-2 focus:ring-blue-400"
+                >
+                  💾
+                </button>
+                <button
+                  onClick={() => setSelected(null)}
+                  aria-label="Закрыть"
+                  className="ml-1 p-2 rounded-full focus:ring-2 focus:ring-blue-400"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             <div className="mt-4 text-gray-700 dark:text-gray-300">
@@ -315,7 +628,7 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
 
             <div className="mt-6 flex items-center justify-between">
               <SocialLinks social={selected.social} />
-              <div>
+              <div className="flex items-center gap-2">
                 {selected.social?.github && isValidUrl(selected.social.github) && (
                   <a
                     href={selected.social.github}
@@ -326,11 +639,24 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
                     Открыть на GitHub <FaExternalLinkAlt className="text-xs" />
                   </a>
                 )}
+                {selected.social?.linkedin && isValidUrl(selected.social.linkedin) && (
+                  <a
+                    href={selected.social.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-2 inline-flex items-center gap-2 text-sm font-medium px-3 py-1 rounded-full border border-gray-200 dark:border-gray-700"
+                  >
+                    LinkedIn
+                  </a>
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Toast */}
+      <Toast message={toast} onClose={() => setToast(undefined)} />
     </section>
   );
 }
