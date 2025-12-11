@@ -142,8 +142,8 @@ export function Header({ theme, setTheme, city, setCity }) {
           <Image
             src="/logo.jpg"
             alt="Korshi.kz logo"
-            width={100}
-            height={100}
+            width={135}
+            height={135}
             className="rounded-xl select-none"
             priority
           />
