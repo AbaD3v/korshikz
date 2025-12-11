@@ -142,8 +142,8 @@ export function Header({ theme, setTheme, city, setCity }) {
           <Image
             src="/logo.jpg"
             alt="Korshi.kz logo"
-            width={40}
-            height={40}
+            width={100}
+            height={100}
             className="rounded-xl select-none"
             priority
           />
@@ -154,7 +154,6 @@ export function Header({ theme, setTheme, city, setCity }) {
               bg-gradient-to-r from-slate-900 to-indigo-600 dark:from-white dark:to-blue-300
             `}
           >
-            Korshi.kz
           </span>
         </Link>
 
