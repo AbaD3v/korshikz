@@ -426,48 +426,78 @@ export default function ListingDetail() {
               </section>
             )}
 
-            {/* OWNER / ACTIONS */}
-            <div className="bg-gray-50 dark:bg-gray-800 border p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex items-start sm:items-center gap-3 min-w-0">
-                <img
-                  src={owner?.avatar_url || "/default-avatar.png"}
-                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover border flex-shrink-0"
-                  alt="avatar"
-                />
+{/* OWNER / ACTIONS */}
+<div className="bg-gray-50 dark:bg-gray-800 border p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+  <div className="flex items-start sm:items-center gap-3 min-w-0">
+    <img
+      src={owner?.avatar_url || "/default-avatar.png"}
+      className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover border flex-shrink-0"
+      alt="avatar"
+    />
 
-                <div className="min-w-0">
-                  <div className="font-semibold text-base sm:text-lg truncate">{owner?.full_name || "Без имени"}</div>
-                  <div className="text-sm text-gray-500 truncate">{owner?.university ? `${owner.university}${owner.course ? ` — ${owner.course} курс` : ""}` : ""}</div>
-                </div>
-              </div>
-
-              {/* action buttons group */}
-              <div className="w-full sm:w-auto flex gap-2 flex-col sm:flex-row">
-                <button onClick={startChat} className="px-4 py-2 bg-emerald-600 text-white rounded-lg w-full sm:w-auto whitespace-nowrap">Написать</button>
-                <button onClick={openWhatsApp} className="px-4 py-2 border rounded-lg w-full sm:w-auto whitespace-nowrap">WhatsApp</button>
-                <button onClick={onCall} className="px-4 py-2 border rounded-lg w-full sm:w-auto whitespace-nowrap">Позвонить</button>
-                <button onClick={onReport} className="px-4 py-2 border rounded-lg text-red-600 w-full sm:w-auto whitespace-nowrap">Пожаловаться</button>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-sm text-gray-500">
-              <div>Добавлено: {new Date(listing.created_at).toLocaleString()}</div>
-              <div>ID: {listing.id}</div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Sticky mobile action bar (prevents overflow and keeps buttons accessible) */}
-        <div className="sm:hidden">
-          <div className="fixed bottom-4 left-4 right-4 z-50">
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3 shadow-lg flex gap-2">
-              <button onClick={startChat} className="flex-1 bg-emerald-600 text-white px-3 py-2 rounded-lg">Написать</button>
-              <button onClick={openWhatsApp} className="flex-1 border px-3 py-2 rounded-lg">WhatsApp</button>
-              <button onClick={onReport} className="flex-1 border text-red-600 px-3 py-2 rounded-lg">Пожаловаться</button>
-            </div>
-          </div>
-        </div>
+    <div className="min-w-0">
+      <div className="font-semibold text-base sm:text-lg truncate">{owner?.full_name || "Без имени"}</div>
+      <div className="text-sm text-gray-500 truncate">
+        {owner?.university ? `${owner.university}${owner.course ? ` — ${owner.course} курс` : ""}` : ""}
       </div>
+    </div>
+  </div>
+
+  {/* action buttons group: flexible, wraps on small screens, buttons can shrink */}
+  <div className="w-full sm:w-auto flex flex-wrap gap-2">
+    <button
+      onClick={startChat}
+      className="flex-1 sm:flex-none min-w-0 text-sm px-3 py-2 bg-emerald-600 text-white rounded-lg"
+    >
+      Написать
+    </button>
+
+    <button
+      onClick={openWhatsApp}
+      className="flex-1 sm:flex-none min-w-0 text-sm px-3 py-2 border rounded-lg"
+    >
+      WhatsApp
+    </button>
+
+    <button
+      onClick={onCall}
+      className="flex-1 sm:flex-none min-w-0 text-sm px-3 py-2 border rounded-lg"
+    >
+      Позвонить
+    </button>
+
+    <button
+      onClick={onReport}
+      className="flex-1 sm:flex-none min-w-0 text-sm px-3 py-2 border rounded-lg text-red-600"
+    >
+      Пожаловаться
+    </button>
+  </div>
+</div>
+
+<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-sm text-gray-500">
+  <div>Добавлено: {new Date(listing.created_at).toLocaleString()}</div>
+  <div>ID: {listing.id}</div>
+</div>
+</div> {/* <-- closes p-6 wrapper */ }
+</motion.div>
+</div>
+
+{/* Sticky mobile action bar (prevents overflow and keeps buttons accessible) */}
+<div className="sm:hidden">
+  <div className="fixed bottom-4 left-4 right-4 z-50">
+    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-2 shadow-lg">
+      {/* horizontal scroll if too many buttons; inner container min-width to allow natural sizing */}
+      <div className="flex gap-2 min-w-max overflow-x-auto px-1">
+        <button onClick={startChat} className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm whitespace-nowrap">Написать</button>
+        <button onClick={openWhatsApp} className="px-3 py-2 border rounded-lg text-sm whitespace-nowrap">WhatsApp</button>
+        <button onClick={onCall} className="px-3 py-2 border rounded-lg text-sm whitespace-nowrap">Позвонить</button>
+        <button onClick={onReport} className="px-3 py-2 border rounded-lg text-sm text-red-600 whitespace-nowrap">Пожаловаться</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
       {/* Lightbox */}
       {lightboxOpen && (
