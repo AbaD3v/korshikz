@@ -3,7 +3,7 @@ import Head from "next/head";
 import { useRouter } from "next/router";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { supabase } from "@/hooks/utils/supabase/client"; // <- используй свой путь к supabase, если отличается
+import { supabase } from "@/hooks/utils/supabase/client";
 import MapView from "@/components/mapview";
 
 export default function ListingDetail() {
@@ -20,6 +20,9 @@ export default function ListingDetail() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
   const [incViewDone, setIncViewDone] = useState(false);
+
+  // new: mobile map fullscreen state
+  const [mobileMapOpen, setMobileMapOpen] = useState(false);
 
   // helpers
   const formatPrice = (val) =>
@@ -49,7 +52,10 @@ export default function ListingDetail() {
       if (!images.length) return;
       if (e.key === "ArrowRight") setActiveIndex((i) => Math.min(i + 1, images.length - 1));
       if (e.key === "ArrowLeft") setActiveIndex((i) => Math.max(i - 1, 0));
-      if (e.key === "Escape") setLightboxOpen(false);
+      if (e.key === "Escape") {
+        setLightboxOpen(false);
+        setMobileMapOpen(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -212,6 +218,18 @@ export default function ListingDetail() {
     setLightboxOpen(true);
   };
 
+  // prevent background scroll while mobile map fullscreen is open
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (mobileMapOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [mobileMapOpen]);
+
   if (loading)
     return (
       <div className="text-center py-20 text-lg animate-pulse">
@@ -358,32 +376,32 @@ export default function ListingDetail() {
             </section>
 
             {/* MAP */}
-{listing.lat && listing.lng && (
-  <section>
-    <h3 className="text-lg font-semibold mb-2">Расположение</h3>
+            {listing.lat && listing.lng && (
+              <section>
+                <h3 className="text-lg font-semibold mb-2">Расположение</h3>
 
-    {/* Мобильная обёртка с кнопкой */}
-    <div className="relative">
+                {/* адаптивная карта: компактная на мобиле + полноэкран */}
+                <div className="relative">
+                  <div className="w-full h-[220px] sm:h-[360px] rounded-xl overflow-hidden border">
+                    <MapView
+                      coordinates={[listing.lat, listing.lng]}
+                      height="100%"
+                      showCard={false}
+                    />
+                  </div>
 
-      {/* Обычная карта (адаптивная высота) */}
-      <div className="w-full h-[220px] sm:h-[360px] rounded-xl overflow-hidden border">
-        <MapView
-          coordinates={[listing.lat, listing.lng]}
-          height="100%"
-          showCard={false}
-        />
-      </div>
+                  {/* кнопка открыть полноэкран (только на маленьких экранах) */}
+                  <button
+                    aria-label="Открыть карту на весь экран"
+                    onClick={() => setMobileMapOpen(true)}
+                    className="sm:hidden absolute bottom-3 right-3 bg-black/70 text-white px-3 py-1 rounded-lg text-sm backdrop-blur shadow"
+                  >
+                    Развернуть карту
+                  </button>
+                </div>
+              </section>
+            )}
 
-      {/* Кнопка развернуть — видна только на телефонах */}
-      <button
-        className="sm:hidden absolute bottom-3 right-3 bg-black/70 text-white px-3 py-1 rounded-lg text-sm backdrop-blur shadow"
-        onClick={() => setMobileMapOpen(true)}
-      >
-        Развернуть карту
-      </button>
-    </div>
-  </section>
-)}
             {/* OWNER / ACTIONS */}
             <div className="bg-gray-50 dark:bg-gray-800 border p-4 rounded-xl flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
@@ -405,23 +423,6 @@ export default function ListingDetail() {
             <div className="flex justify-between items-center">
               <div className="text-sm text-gray-500">Добавлено: {new Date(listing.created_at).toLocaleString()}</div>
               <div className="text-sm text-gray-500">ID: {listing.id}</div>
-              {/* Fullscreen mobile map */}
-{mobileMapOpen && (
-  <div className="fixed inset-0 bg-black/80 backdrop-blur z-50 flex flex-col">
-    <div className="flex justify-between items-center p-4 text-white">
-      <div className="text-lg font-semibold">Карта</div>
-      <button onClick={() => setMobileMapOpen(false)} className="text-2xl">✕</button>
-    </div>
-
-    <div className="flex-1">
-      <MapView
-        coordinates={[listing.lat, listing.lng]}
-        height="100%"
-        showCard={false}
-      />
-    </div>
-  </div>
-)}
             </div>
           </div>
         </motion.div>
@@ -437,6 +438,48 @@ export default function ListingDetail() {
             <div className="text-center text-white mt-3">{activeIndex + 1} / {images.length}</div>
           </div>
           <button className="absolute right-6 text-white text-3xl" onClick={nextImage} aria-label="Следующее">›</button>
+        </div>
+      )}
+
+      {/* Fullscreen mobile map modal */}
+      {mobileMapOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 bg-black/80 backdrop-blur z-50 flex flex-col"
+        >
+          <div className="flex items-center justify-between p-4 text-white">
+            <div className="text-lg font-semibold">Карта</div>
+            <div className="flex items-center gap-2">
+              <button
+                className="text-sm bg-white/10 px-3 py-1 rounded"
+                onClick={() => {
+                  // try to open in new tab with map center (friendly fallback)
+                  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${listing.lat},${listing.lng}`)}`;
+                  window.open(url, "_blank");
+                }}
+                aria-label="Открыть в Google Maps"
+              >
+                Открыть в Google Maps
+              </button>
+
+              <button
+                className="text-2xl px-3 py-0.5"
+                onClick={() => setMobileMapOpen(false)}
+                aria-label="Закрыть карту"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1">
+            <MapView
+              coordinates={[listing.lat, listing.lng]}
+              height="100%"
+              showCard={false}
+            />
+          </div>
         </div>
       )}
     </>
