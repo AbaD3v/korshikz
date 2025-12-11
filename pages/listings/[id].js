@@ -172,17 +172,40 @@ export default function ListingDetail() {
     }
   };
 
-  // open whatsapp safely
-  const openWhatsApp = () => {
-    const phone = owner?.phone?.replace(/[^\d+]/g, "");
-    if (!phone) {
-      alert("Телефон владельца не указан");
-      return;
-    }
-    const text = encodeURIComponent(`Привет! Я заинтересован в объявлении: ${listing?.title || ""}`);
-    const href = `https://wa.me/${phone}?text=${text}`;
-    window.open(href, "_blank");
-  };
+// open whatsapp safely
+const openWhatsApp = () => {
+  if (!owner?.phone) {
+    alert("Телефон владельца не указан");
+    return;
+  }
+
+  // Удаляем всё, кроме цифр
+  let phone = owner.phone.replace(/\D/g, "");
+
+  // Конвертация под Казахстан / СНГ
+  // Если начинается с 8 → превращаем в +7
+  if (phone.startsWith("8")) {
+    phone = "7" + phone.slice(1);
+  }
+
+  // Если начинается с 7 → добавляем +
+  if (phone.startsWith("7")) {
+    phone = "+" + phone;
+  }
+
+  // Если уже начинается с +7 — оставляем
+  if (owner.phone.startsWith("+")) {
+    phone = "+" + phone;
+  }
+
+  const text = encodeURIComponent(
+    `Привет! Я заинтересован в объявлении: ${listing?.title || ""}`
+  );
+
+  const href = `https://wa.me/${phone}?text=${text}`;
+  window.open(href, "_blank");
+};
+
 
   // call phone
   const onCall = () => {

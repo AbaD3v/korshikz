@@ -109,7 +109,7 @@ export default function Listings({ selectedCity }) {
     setPriceMin(0);
     setPriceMax(1000000);
   }, []);
-
+x
   /* GEO LOCATION */
   useEffect(() => {
     if (!geoEnabled) {
