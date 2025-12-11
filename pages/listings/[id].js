@@ -33,7 +33,6 @@ export default function ListingDetail() {
       if (!raw) return [];
       if (Array.isArray(raw)) return raw.filter(Boolean);
       if (typeof raw === "string") {
-        // handles Postgres text array like '{"url1","url2"}' or '{url1,url2}' or '["url1","url2"]'
         const cleaned = raw.replace(/^\s*\{|\}\s*$/g, "").replace(/["\[\]]/g, "");
         return cleaned
           .split(",")
@@ -46,7 +45,7 @@ export default function ListingDetail() {
     }
   };
 
-  // keyboard navigation for gallery
+  // keyboard navigation for gallery + close fullscreen map
   useEffect(() => {
     const onKey = (e) => {
       if (!images.length) return;
@@ -70,16 +69,13 @@ export default function ListingDetail() {
       setError(null);
 
       try {
-        // load auth user (optional)
         try {
           const { data: authData } = await supabase.auth.getUser();
           if (mounted) setUser(authData?.data?.user ?? null);
         } catch (e) {
-          // ignore auth error for listing page
           console.warn("auth.getUser error", e);
         }
 
-        // load listing
         const { data: listingData, error: listingErr } = await supabase
           .from("listings")
           .select("*")
@@ -90,12 +86,10 @@ export default function ListingDetail() {
         if (!mounted) return;
         setListing(listingData);
 
-        // parse images robustly
         const imgs = parseImageUrls(listingData?.image_urls);
         setImages(imgs.length ? imgs : ["/no-image.png"]);
         setActiveIndex(0);
 
-        // load owner profile if exists
         if (listingData?.user_id) {
           const { data: ownerData, error: ownerErr } = await supabase
             .from("profiles")
@@ -104,14 +98,12 @@ export default function ListingDetail() {
             .single();
 
           if (ownerErr && ownerErr.code !== "PGRST116") {
-            // PGRST116 often means zero rows — ignore gracefully
             console.warn("owner load error", ownerErr);
           } else {
             setOwner(ownerData ?? null);
           }
         }
 
-        // increment views (one-time per page load)
         try {
           if (!incViewDone) {
             await supabase
@@ -201,13 +193,11 @@ export default function ListingDetail() {
     router.push(`/chat/${owner.id}`);
   };
 
-  // complaint stub
+  // complaint stub (now uses confirmation and avoids layout shift)
   const onReport = () => {
     const reason = prompt("Опишите причину жалобы (коротко)");
     if (!reason) return;
-    // отправить в таблицу reports (опционально) — здесь лишь уведомление
     alert("Жалоба отправлена модераторам");
-    // optionally insert to supabase.from("reports").insert({...})
   };
 
   // gallery controls
@@ -232,23 +222,17 @@ export default function ListingDetail() {
 
   if (loading)
     return (
-      <div className="text-center py-20 text-lg animate-pulse">
-        Загрузка данных…
-      </div>
+      <div className="text-center py-20 text-lg animate-pulse">Загрузка данных…</div>
     );
 
   if (error)
     return (
-      <div className="text-center py-20 text-red-600">
-        Ошибка загрузки: {error}
-      </div>
+      <div className="text-center py-20 text-red-600">Ошибка загрузки: {error}</div>
     );
 
   if (!listing)
     return (
-      <div className="text-center py-20 text-xl">
-        Объявление не найдено 😕
-      </div>
+      <div className="text-center py-20 text-xl">Объявление не найдено 😕</div>
     );
 
   return (
@@ -258,15 +242,15 @@ export default function ListingDetail() {
         <meta name="description" content={listing.description || listing.title || ""} />
       </Head>
 
-      <div className="max-w-6xl mx-auto px-4 py-10">
+      <div className="max-w-6xl mx-auto px-4 py-8">
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden border border-gray-200 dark:border-gray-700"
         >
           {/* gallery */}
-          <div className="relative w-full h-[520px] bg-black">
-            <div className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none">
+          <div className="relative w-full h-[320px] sm:h-[520px] bg-black">
+            <div className="absolute inset-0 flex items-center justify-between px-3 pointer-events-none">
               <button
                 onClick={prevImage}
                 aria-label="Предыдущее фото"
@@ -297,7 +281,7 @@ export default function ListingDetail() {
                       onClick={() => openLightbox(i)}
                       style={{ cursor: "zoom-in" }}
                     />
-                    <div className="absolute bottom-4 left-4 bg-black/50 text-white px-3 py-1 rounded-md text-sm">
+                    <div className="absolute bottom-3 left-3 bg-black/60 text-white px-2 py-1 rounded-md text-sm">
                       {i === activeIndex ? `${i + 1}/${images.length}` : null}
                     </div>
                   </div>
@@ -312,7 +296,9 @@ export default function ListingDetail() {
                   key={i}
                   onClick={() => setActiveIndex(i)}
                   aria-label={`Показать фото ${i + 1}`}
-                  className={`w-12 h-8 rounded overflow-hidden border ${i === activeIndex ? "ring-2 ring-emerald-500" : "border-white/30"}`}
+                  className={`w-12 h-8 rounded overflow-hidden border ${
+                    i === activeIndex ? "ring-2 ring-emerald-500" : "border-white/30"
+                  }`}
                 >
                   <img src={src} className="w-full h-full object-cover" />
                 </button>
@@ -320,39 +306,48 @@ export default function ListingDetail() {
             </div>
           </div>
 
-          <div className="p-7 space-y-6">
-            <div className="flex items-start justify-between gap-4">
+          <div className="p-6 sm:p-7 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <h1 className="text-3xl font-bold tracking-tight">{listing.title}</h1>
+                <h1
+                  className="title-clamp text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 dark:text-white"
+                >
+                  {listing.title}
+                </h1>
+
                 {listing.address && (
-                  <div className="text-sm text-gray-500 mt-1">{listing.address}</div>
+                  <div className="text-sm text-gray-500 mt-2 truncate">{listing.address}</div>
                 )}
-                <div className="mt-3 flex flex-wrap gap-3 items-center text-sm text-gray-600">
+
+                <div className="mt-3 flex flex-wrap gap-2 items-center text-sm text-gray-600">
                   <div>Просмотров: <strong>{listing.views ?? 0}</strong></div>
-                  {listing.category && <div className="px-2 py-0.5 bg-gray-100 rounded">{listing.category}</div>}
-                  {listing.property_type && <div className="px-2 py-0.5 bg-gray-100 rounded">{listing.property_type}</div>}
+                  {listing.category && (
+                    <div className="px-2 py-0.5 bg-gray-100 rounded text-sm">{listing.category}</div>
+                  )}
+                  {listing.property_type && (
+                    <div className="px-2 py-0.5 bg-gray-100 rounded text-sm">{listing.property_type}</div>
+                  )}
                 </div>
               </div>
 
-              <div className="w-56 flex flex-col gap-3 items-end">
+              <div className="w-full sm:w-56 flex-shrink-0 flex flex-col items-stretch gap-3">
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-emerald-600">{formatPrice(listing.price)}</div>
+                  <div className="text-2xl sm:text-2xl font-bold text-emerald-600">{formatPrice(listing.price)}</div>
                   {listing.rent_type && <div className="text-sm text-gray-500">{listing.rent_type}</div>}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <button
                     onClick={toggleSave}
-                    className={`px-3 py-2 rounded-lg border ${saved ? "bg-emerald-600 text-white" : "bg-white text-gray-700"}`}
+                    className={`px-3 py-2 rounded-lg border flex-1 text-center ${
+                      saved ? "bg-emerald-600 text-white" : "bg-white text-gray-700"
+                    }`}
                     aria-pressed={saved}
                   >
                     {saved ? "Сохранено" : "Сохранить"}
                   </button>
 
-                  <button
-                    onClick={onShare}
-                    className="px-3 py-2 rounded-lg border bg-white"
-                  >
+                  <button onClick={onShare} className="px-3 py-2 rounded-lg border bg-white flex-1 text-center">
                     Поделиться
                   </button>
                 </div>
@@ -362,7 +357,7 @@ export default function ListingDetail() {
             {/* DESCRIPTION */}
             {listing.description && (
               <section>
-                <h2 className="text-xl font-semibold mb-2">Описание</h2>
+                <h2 className="text-lg font-semibold mb-2">Описание</h2>
                 <p className="text-gray-600 dark:text-gray-300 leading-relaxed">{listing.description}</p>
               </section>
             )}
@@ -380,17 +375,11 @@ export default function ListingDetail() {
               <section>
                 <h3 className="text-lg font-semibold mb-2">Расположение</h3>
 
-                {/* адаптивная карта: компактная на мобиле + полноэкран */}
                 <div className="relative">
-                  <div className="w-full h-[220px] sm:h-[360px] rounded-xl overflow-hidden border">
-                    <MapView
-                      coordinates={[listing.lat, listing.lng]}
-                      height="100%"
-                      showCard={false}
-                    />
+                  <div className="w-full h-[250px] sm:h-[360px] rounded-xl overflow-hidden border">
+                    <MapView coordinates={[listing.lat, listing.lng]} height="100%" showCard={false} />
                   </div>
 
-                  {/* кнопка открыть полноэкран (только на маленьких экранах) */}
                   <button
                     aria-label="Открыть карту на весь экран"
                     onClick={() => setMobileMapOpen(true)}
@@ -403,26 +392,31 @@ export default function ListingDetail() {
             )}
 
             {/* OWNER / ACTIONS */}
-            <div className="bg-gray-50 dark:bg-gray-800 border p-4 rounded-xl flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <img src={owner?.avatar_url || "/default-avatar.png"} className="w-16 h-16 rounded-full object-cover border" alt="avatar" />
-                <div>
-                  <div className="font-semibold text-lg">{owner?.full_name || "Без имени"}</div>
-                  <div className="text-sm text-gray-500">{owner?.university ? `${owner.university}${owner.course ? ` — ${owner.course} курс` : ""}` : ""}</div>
+            <div className="bg-gray-50 dark:bg-gray-800 border p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start sm:items-center gap-4 min-w-0">
+                <img
+                  src={owner?.avatar_url || "/default-avatar.png"}
+                  className="w-14 h-14 rounded-full object-cover border flex-shrink-0"
+                  alt="avatar"
+                />
+
+                <div className="min-w-0">
+                  <div className="font-semibold text-lg truncate">{owner?.full_name || "Без имени"}</div>
+                  <div className="text-sm text-gray-500 truncate">{owner?.university ? `${owner.university}${owner.course ? ` — ${owner.course} курс` : ""}` : ""}</div>
                 </div>
               </div>
 
-              <div className="flex gap-3">
-                <button onClick={startChat} className="px-4 py-2 bg-emerald-600 text-white rounded-lg">Написать</button>
-                <button onClick={openWhatsApp} className="px-4 py-2 border rounded-lg">WhatsApp</button>
-                <button onClick={onCall} className="px-4 py-2 border rounded-lg">Позвонить</button>
-                <button onClick={onReport} className="px-4 py-2 border rounded-lg text-red-600">Пожаловаться</button>
+              <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-2">
+                <button onClick={startChat} className="px-4 py-2 bg-emerald-600 text-white rounded-lg w-full sm:w-auto">Написать</button>
+                <button onClick={openWhatsApp} className="px-4 py-2 border rounded-lg w-full sm:w-auto">WhatsApp</button>
+                <button onClick={onCall} className="px-4 py-2 border rounded-lg w-full sm:w-auto">Позвонить</button>
+                <button onClick={onReport} className="px-4 py-2 border rounded-lg text-red-600 w-full sm:w-auto">Пожаловаться</button>
               </div>
             </div>
 
-            <div className="flex justify-between items-center">
-              <div className="text-sm text-gray-500">Добавлено: {new Date(listing.created_at).toLocaleString()}</div>
-              <div className="text-sm text-gray-500">ID: {listing.id}</div>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-sm text-gray-500">
+              <div>Добавлено: {new Date(listing.created_at).toLocaleString()}</div>
+              <div>ID: {listing.id}</div>
             </div>
           </div>
         </motion.div>
@@ -443,18 +437,13 @@ export default function ListingDetail() {
 
       {/* Fullscreen mobile map modal */}
       {mobileMapOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 bg-black/80 backdrop-blur z-50 flex flex-col"
-        >
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/80 backdrop-blur z-50 flex flex-col">
           <div className="flex items-center justify-between p-4 text-white">
             <div className="text-lg font-semibold">Карта</div>
             <div className="flex items-center gap-2">
               <button
                 className="text-sm bg-white/10 px-3 py-1 rounded"
                 onClick={() => {
-                  // try to open in new tab with map center (friendly fallback)
                   const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${listing.lat},${listing.lng}`)}`;
                   window.open(url, "_blank");
                 }}
@@ -463,25 +452,31 @@ export default function ListingDetail() {
                 Открыть в Google Maps
               </button>
 
-              <button
-                className="text-2xl px-3 py-0.5"
-                onClick={() => setMobileMapOpen(false)}
-                aria-label="Закрыть карту"
-              >
-                ✕
-              </button>
+              <button className="text-2xl px-3 py-0.5" onClick={() => setMobileMapOpen(false)} aria-label="Закрыть карту">✕</button>
             </div>
           </div>
 
           <div className="flex-1">
-            <MapView
-              coordinates={[listing.lat, listing.lng]}
-              height="100%"
-              showCard={false}
-            />
+            <MapView coordinates={[listing.lat, listing.lng]} height="100%" showCard={false} />
           </div>
         </div>
       )}
+
+      {/* small inline styles for title clamp on small screens */}
+      <style jsx>{`
+        .title-clamp { /* fallback: clamp only on small screens to avoid unexpected truncation on desktop */
+          display: block;
+        }
+        @media (max-width: 640px) {
+          .title-clamp {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            word-break: break-word;
+          }
+        }
+      `}</style>
     </>
   );
 }
