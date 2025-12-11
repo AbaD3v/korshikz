@@ -358,15 +358,32 @@ export default function ListingDetail() {
             </section>
 
             {/* MAP */}
-            {listing.lat && listing.lng && (
-              <section>
-                <h3 className="text-lg font-semibold mb-2">Расположение</h3>
-                <div className="w-full h-[360px] rounded-xl overflow-hidden border">
-                  <MapView coordinates={[listing.lat, listing.lng]} height="100%" showCard={false} />
-                </div>
-              </section>
-            )}
+{listing.lat && listing.lng && (
+  <section>
+    <h3 className="text-lg font-semibold mb-2">Расположение</h3>
 
+    {/* Мобильная обёртка с кнопкой */}
+    <div className="relative">
+
+      {/* Обычная карта (адаптивная высота) */}
+      <div className="w-full h-[220px] sm:h-[360px] rounded-xl overflow-hidden border">
+        <MapView
+          coordinates={[listing.lat, listing.lng]}
+          height="100%"
+          showCard={false}
+        />
+      </div>
+
+      {/* Кнопка развернуть — видна только на телефонах */}
+      <button
+        className="sm:hidden absolute bottom-3 right-3 bg-black/70 text-white px-3 py-1 rounded-lg text-sm backdrop-blur shadow"
+        onClick={() => setMobileMapOpen(true)}
+      >
+        Развернуть карту
+      </button>
+    </div>
+  </section>
+)}
             {/* OWNER / ACTIONS */}
             <div className="bg-gray-50 dark:bg-gray-800 border p-4 rounded-xl flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
@@ -388,6 +405,23 @@ export default function ListingDetail() {
             <div className="flex justify-between items-center">
               <div className="text-sm text-gray-500">Добавлено: {new Date(listing.created_at).toLocaleString()}</div>
               <div className="text-sm text-gray-500">ID: {listing.id}</div>
+              {/* Fullscreen mobile map */}
+{mobileMapOpen && (
+  <div className="fixed inset-0 bg-black/80 backdrop-blur z-50 flex flex-col">
+    <div className="flex justify-between items-center p-4 text-white">
+      <div className="text-lg font-semibold">Карта</div>
+      <button onClick={() => setMobileMapOpen(false)} className="text-2xl">✕</button>
+    </div>
+
+    <div className="flex-1">
+      <MapView
+        coordinates={[listing.lat, listing.lng]}
+        height="100%"
+        showCard={false}
+      />
+    </div>
+  </div>
+)}
             </div>
           </div>
         </motion.div>
