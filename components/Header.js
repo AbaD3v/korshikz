@@ -135,6 +135,14 @@ export function Header({ theme, setTheme, city, setCity }) {
               bg-gradient-to-r from-slate-900 to-indigo-600 dark:from-white dark:to-blue-300
             `}
           >
+            <Image
+          src="/logo.png"   // ⬅ сюда твой логотип
+          alt="Korshi.kz"
+          width={40}
+          height={40}
+          className="rounded-xl select-none"
+          priority
+        />
             Korshi.kz
           </span>
         </Link>
