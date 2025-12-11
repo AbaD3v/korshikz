@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
 import ProfileButton from "./ProfileButton";
+import Image from "next/image";
 import {
   Moon,
   Sun,
