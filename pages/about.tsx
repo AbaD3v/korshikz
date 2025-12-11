@@ -573,17 +573,20 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
       </div>
 
       {/* Grid with animated appearance */}
-      <div ref={containerRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full" aria-live="polite">
+      <div
+        ref={containerRef}
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full"
+        aria-live="polite"
+      >
         {filtered.map((dev, i) => (
           <div
             key={dev.name + i}
             data-animated
-            className="h-full"
-            style={{
-              transition: prefersReduced ? "none" : "transform 360ms cubic-bezier(.2,.9,.2,1), opacity 360ms",
-              transform: prefersReduced ? "none" : "translateY(8px)",
-              opacity: prefersReduced ? 1 : 0,
-            }}
+            className={
+              // if reduced motion requested, render visible without animation
+              prefersReduced ? "h-full opacity-100 translate-y-0" : "h-full opacity-0 translate-y-2"
+            }
+            style={prefersReduced ? {} : { transition: "transform 360ms cubic-bezier(.2,.9,.2,1), opacity 360ms" }}
           >
             <DevCard dev={dev} onOpen={(d) => openProfile(d)} />
           </div>
