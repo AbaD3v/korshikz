@@ -310,3 +310,4 @@ export function Header({ theme, setTheme, city, setCity }) {
     </header>
   );
 }
+export default Header;
