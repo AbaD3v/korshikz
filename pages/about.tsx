@@ -1,16 +1,12 @@
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import { FaLinkedin, FaGithub, FaSearch, FaExternalLinkAlt } from "react-icons/fa";
 
-// Improved and production-ready single-file React component for the "About" section.
-// Features:
-// - TypeScript types
-// - Props support with sensible defaults
-// - Accessible, keyboard-friendly cards and modal
-// - Image lazy-loading with graceful fallback
-// - Search + filter by role
-// - Memoized subcomponents for performance
-// - Focus & hover styles for accessibility
-// - Clear code comments and small utility helpers
+// Mobile-first, production-ready About component
+// - Improved mobile layout (single-column cards, full-width avatars, compact controls)
+// - Truncated bios with "Показать ещё" toggle
+// - Modal becomes full-screen on small devices and centered on larger screens
+// - Reduced paddings and touch-friendly tap targets
+// - Accessibility: keyboard handlers, aria attributes, focus management
 
 type Social = {
   linkedin?: string;
@@ -75,7 +71,6 @@ const DEFAULT_DEVS: Dev[] = [
   },
 ];
 
-// Small URL validator (safe guard before rendering external links)
 const isValidUrl = (u?: string) => {
   if (!u) return false;
   try {
@@ -86,10 +81,9 @@ const isValidUrl = (u?: string) => {
   }
 };
 
-// Avatar component with graceful fallback
-const Avatar: React.FC<{ src?: string; name: string; size?: number }> = React.memo(({ src, name, size = 96 }) => {
-  const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=${size}&background=fff&color=000`;
-  const [imgSrc, setImgSrc] = useState(src || fallback);
+const Avatar: React.FC<{ src?: string; name: string; size?: number }> = React.memo(({ src, name, size = 120 }) => {
+  const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=${size}&background=ffffff&color=000`;
+  const [imgSrc, setImgSrc] = React.useState(src || fallback);
 
   return (
     <img
@@ -99,20 +93,19 @@ const Avatar: React.FC<{ src?: string; name: string; size?: number }> = React.me
       width={size}
       height={size}
       onError={() => setImgSrc(fallback)}
-      className="w-24 h-24 sm:w-32 sm:h-32 rounded-full mb-4 object-cover shadow-inner"
+      className="w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 rounded-full object-cover shadow-sm"
     />
   );
 });
-
 Avatar.displayName = "Avatar";
 
-// Social links component
-const SocialLinks: React.FC<{ social?: Social }> = ({ social }) => {
+const SocialLinks: React.FC<{ social?: Social; size?: "sm" | "md" }> = ({ social, size = "md" }) => {
+  const base = size === "sm" ? "text-lg" : "text-xl";
   return (
-    <div className="mt-3 flex gap-3 text-xl">
+    <div className={`mt-2 flex items-center gap-3 ${base}`}>
       {social?.linkedin && isValidUrl(social.linkedin) && (
         <a
-          className="focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+          className="focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-2"
           href={social.linkedin}
           target="_blank"
           rel="noopener noreferrer"
@@ -123,7 +116,7 @@ const SocialLinks: React.FC<{ social?: Social }> = ({ social }) => {
       )}
       {social?.github && isValidUrl(social.github) && (
         <a
-          className="focus:outline-none focus:ring-2 focus:ring-gray-400 rounded p-1"
+          className="focus:outline-none focus:ring-2 focus:ring-gray-500 rounded p-2"
           href={social.github}
           target="_blank"
           rel="noopener noreferrer"
@@ -136,37 +129,63 @@ const SocialLinks: React.FC<{ social?: Social }> = ({ social }) => {
   );
 };
 
-// Individual developer card
+const Bio: React.FC<{ text?: string; maxChars?: number }> = ({ text = "", maxChars = 140 }) => {
+  const [open, setOpen] = useState(false);
+  if (!text) return null;
+  if (text.length <= maxChars) return <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">{text}</p>;
+
+  return (
+    <div className="mt-2 text-left">
+      <p className="text-sm text-gray-600 dark:text-gray-300">{open ? text : `${text.slice(0, maxChars).trim()}…`}</p>
+      <button
+        onClick={() => setOpen((s) => !s)}
+        className="mt-2 text-sm font-medium text-blue-600 dark:text-blue-400"
+        aria-expanded={open}
+      >
+        {open ? "Показать меньше" : "Показать ещё"}
+      </button>
+    </div>
+  );
+};
+
 const DevCard: React.FC<{ dev: Dev; onOpen: (d: Dev) => void }> = React.memo(({ dev, onOpen }) => {
   return (
     <article
+      role="button"
       tabIndex={0}
       onClick={() => onOpen(dev)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onOpen(dev);
       }}
       aria-label={`О карточке разработчика ${dev.name}`}
-      className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-lg flex flex-col items-center transition-transform transform hover:-translate-y-2 hover:shadow-2xl focus:translate-y-0 focus:shadow-2xl cursor-pointer"
+      className="w-full bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm flex gap-4 items-start transition-transform hover:translate-y-0.5 active:translate-y-0 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer"
     >
-      <Avatar src={dev.photo} name={dev.name} />
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 text-center">{dev.name}</h3>
-      <p className="text-sm text-gray-500 dark:text-gray-400 text-center mt-1">{dev.role}</p>
-      <p className="mt-3 text-gray-600 dark:text-gray-300 text-sm text-center line-clamp-3">{dev.bio}</p>
-      <SocialLinks social={dev.social} />
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          if (isValidUrl(dev.social?.github)) window.open(dev.social!.github, "_blank", "noopener,noreferrer");
-        }}
-        className="mt-4 inline-flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-900"
-        aria-label={`Открыть профиль ${dev.name} на GitHub`}
-      >
-        Подробнее <FaExternalLinkAlt className="text-xs" />
-      </button>
+      <div className="flex-shrink-0">
+        <Avatar src={dev.photo} name={dev.name} />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{dev.name}</h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">{dev.role}</p>
+        <Bio text={dev.bio} maxChars={100} />
+
+        <div className="mt-3 flex items-center justify-between">
+          <SocialLinks social={dev.social} size="sm" />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isValidUrl(dev.social?.github)) window.open(dev.social!.github, "_blank", "noopener,noreferrer");
+            }}
+            className="ml-2 inline-flex items-center gap-2 text-sm font-medium px-3 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-900"
+            aria-label={`Открыть профиль ${dev.name} на GitHub`}
+          >
+            Подробнее <FaExternalLinkAlt className="text-xs" />
+          </button>
+        </div>
+      </div>
     </article>
   );
 });
-
 DevCard.displayName = "DevCard";
 
 export default function About({ developers = DEFAULT_DEVS, title, description }: AboutProps) {
@@ -197,17 +216,28 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
 
   const clearSearch = useCallback(() => setQuery(""), []);
 
-  return (
-    <section className="p-6 sm:p-10 text-center">
-      <h1 className="text-3xl sm:text-4xl font-bold mb-3 text-gray-900 dark:text-gray-100">{title || "О проекте Korshi.kz"}</h1>
-      <p className="text-base sm:text-lg text-gray-600 dark:text-gray-400 max-w-3xl mx-auto mb-6">
-        {description ||
-          "Korshi.kz — это платформа для поиска соседей и жилья по Казахстану. Создана для студентов, айтишников и всех, кто ищет комфортное жильё и дружелюбных соседей 💙"}
-      </p>
+  useEffect(() => {
+    // Lock body scroll when modal is open (mobile friendly)
+    if (selected) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [selected]);
 
-      {/* Search & Filters */}
-      <div className="flex flex-col sm:flex-row items-center gap-3 justify-center mb-6">
-        <label className="relative w-full max-w-xl">
+  return (
+    <section className="p-4 sm:p-8 max-w-4xl mx-auto">
+      <header className="mb-4">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">{title || "О проекте Korshi.kz"}</h1>
+        <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">{description || "Korshi.kz — платформа для поиска соседей и жилья по Казахстану. Создана для студентов, айтишников и всех, кто ищет комфортное жильё и дружелюбных соседей 💙"}</p>
+      </header>
+
+      {/* Controls */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+        <label className="relative w-full">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -232,7 +262,7 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
         <select
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
-          className="py-2 px-3 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none"
+          className="py-2 px-3 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none max-w-xs"
           aria-label="Фильтр по роли"
         >
           {roles.map((r) => (
@@ -243,46 +273,60 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
         </select>
       </div>
 
-      {/* Developers grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+      {/* Grid */}
+      <div className="grid grid-cols-1 gap-4">
         {filtered.map((dev, i) => (
           <DevCard key={dev.name + i} dev={dev} onOpen={(d) => setSelected(d)} />
         ))}
       </div>
 
-      {/* Simple Modal for details (accessible) */}
+      {/* Modal / Details (accessible) */}
       {selected && (
         <div
           role="dialog"
           aria-modal="true"
           aria-label={`Детали разработчика ${selected.name}`}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50"
           onClick={() => setSelected(null)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-2xl bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-2xl text-left"
+            className="w-full h-[85vh] sm:h-auto sm:max-w-2xl bg-white dark:bg-gray-900 rounded-t-xl sm:rounded-2xl p-4 sm:p-6 shadow-2xl overflow-auto"
+            aria-live="polite"
           >
-            <div className="flex gap-4 items-center">
-              <Avatar src={selected.photo} name={selected.name} size={128} />
-              <div>
-                <h4 className="text-xl font-bold text-gray-900 dark:text-gray-100">{selected.name}</h4>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{selected.role}</p>
+            <div className="flex items-start gap-4">
+              <Avatar src={selected.photo} name={selected.name} size={140} />
+              <div className="flex-1">
+                <h4 className="text-lg font-bold text-gray-900 dark:text-gray-100">{selected.name}</h4>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{selected.role}</p>
               </div>
+              <button
+                onClick={() => setSelected(null)}
+                aria-label="Закрыть"
+                className="ml-2 p-2 rounded-full focus:ring-2 focus:ring-blue-400"
+              >
+                ✕
+              </button>
             </div>
 
             <div className="mt-4 text-gray-700 dark:text-gray-300">
-              <p>{selected.bio}</p>
+              <p className="text-sm whitespace-pre-line">{selected.bio}</p>
             </div>
 
-            <div className="mt-4 flex justify-end">
+            <div className="mt-6 flex items-center justify-between">
               <SocialLinks social={selected.social} />
-              <button
-                onClick={() => setSelected(null)}
-                className="ml-4 px-4 py-2 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700"
-              >
-                Закрыть
-              </button>
+              <div>
+                {selected.social?.github && isValidUrl(selected.social.github) && (
+                  <a
+                    href={selected.social.github}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-sm font-medium px-3 py-1 rounded-full border border-gray-200 dark:border-gray-700"
+                  >
+                    Открыть на GitHub <FaExternalLinkAlt className="text-xs" />
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </div>
