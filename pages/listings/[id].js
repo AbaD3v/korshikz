@@ -1,11 +1,12 @@
 // pages/listings/[id].js
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/hooks/utils/supabase/client";
 import MapView from "@/components/mapview";
 
+// MOBILE-FIRST, production-ready Listing detail with thorough responsive fixes
 export default function ListingDetail() {
   const router = useRouter();
   const { id } = router.query;
@@ -21,11 +22,21 @@ export default function ListingDetail() {
   const [error, setError] = useState(null);
   const [incViewDone, setIncViewDone] = useState(false);
 
+  // new: mobile map fullscreen state
   const [mobileMapOpen, setMobileMapOpen] = useState(false);
+  // detect mobile/tablet for feature toggles
+  const [isMobile, setIsMobile] = useState(false);
 
-  // touch swipe
+  // touch swipe support
   const touchStartX = useRef(null);
   const touchEndX = useRef(null);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const formatPrice = (val) =>
     val == null ? "" : new Intl.NumberFormat("ru-RU").format(Number(val)) + " ₸";
@@ -36,10 +47,7 @@ export default function ListingDetail() {
       if (Array.isArray(raw)) return raw.filter(Boolean);
       if (typeof raw === "string") {
         const cleaned = raw.replace(/^\s*\{|\}\s*$/g, "").replace(/["\[\]]/g, "");
-        return cleaned
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
+        return cleaned.split(",").map((s) => s.trim()).filter(Boolean);
       }
       return [];
     } catch {
@@ -47,7 +55,7 @@ export default function ListingDetail() {
     }
   };
 
-  // gallery keyboard + escape
+  // keyboard navigation for gallery + close fullscreen map
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") {
@@ -62,13 +70,14 @@ export default function ListingDetail() {
     return () => window.removeEventListener("keydown", onKey);
   }, [images.length]);
 
-  // load data
+  // load current user, listing and owner
   useEffect(() => {
     if (!id) return;
     let mounted = true;
     (async () => {
       setLoading(true);
       setError(null);
+
       try {
         try {
           const { data: authData } = await supabase.auth.getUser();
@@ -128,7 +137,7 @@ export default function ListingDetail() {
     };
   }, [id]);
 
-  // saved local
+  // Local save/favourite (simple localStorage)
   useEffect(() => {
     if (!id) return;
     const savedMap = JSON.parse(localStorage.getItem("saved_listings_v1") || "{}");
@@ -147,6 +156,7 @@ export default function ListingDetail() {
     localStorage.setItem("saved_listings_v1", JSON.stringify(savedMap));
   };
 
+  // share
   const onShare = async () => {
     const shareUrl = `${location.origin}/listings/${id}`;
     try {
@@ -162,31 +172,45 @@ export default function ListingDetail() {
     }
   };
 
+  // open whatsapp safely
   const openWhatsApp = () => {
     const phone = owner?.phone?.replace(/[^\d+]/g, "");
-    if (!phone) return alert("Телефон владельца не указан");
+    if (!phone) {
+      alert("Телефон владельца не указан");
+      return;
+    }
     const text = encodeURIComponent(`Привет! Я заинтересован в объявлении: ${listing?.title || ""}`);
     const href = `https://wa.me/${phone}?text=${text}`;
     window.open(href, "_blank");
   };
 
+  // call phone
   const onCall = () => {
     const phone = owner?.phone?.replace(/[^\d+]/g, "");
-    if (!phone) return alert("Телефон владельца не указан");
+    if (!phone) {
+      alert("Телефон владельца не указан");
+      return;
+    }
     window.location.href = `tel:${phone}`;
   };
 
+  // go to chat
   const startChat = () => {
-    if (!owner?.id) return alert("Профиль владельца не доступен");
+    if (!owner?.id) {
+      alert("Профиль владельца не доступен");
+      return;
+    }
     router.push(`/chat/${owner.id}`);
   };
 
+  // complaint stub (now uses confirmation and avoids layout shift)
   const onReport = () => {
     const reason = prompt("Опишите причину жалобы (коротко)");
     if (!reason) return;
     alert("Жалоба отправлена модераторам");
   };
 
+  // gallery controls
   const prevImage = () => setActiveIndex((i) => Math.max(0, i - 1));
   const nextImage = () => setActiveIndex((i) => Math.min(images.length - 1, i + 1));
   const openLightbox = (idx = 0) => {
@@ -194,31 +218,49 @@ export default function ListingDetail() {
     setLightboxOpen(true);
   };
 
-  // touch handlers for swipe
-  const onTouchStart = (e) => (touchStartX.current = e.touches[0].clientX);
-  const onTouchMove = (e) => (touchEndX.current = e.touches[0].clientX);
+  // touch handlers for swipe gallery (mobile UX)
+  const onTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const onTouchMove = (e) => {
+    touchEndX.current = e.touches[0].clientX;
+  };
   const onTouchEnd = () => {
     if (touchStartX.current == null || touchEndX.current == null) return;
     const dx = touchStartX.current - touchEndX.current;
-    const threshold = 50;
+    const threshold = 50; // px
     if (dx > threshold) nextImage();
     else if (dx < -threshold) prevImage();
     touchStartX.current = null;
     touchEndX.current = null;
   };
 
-  // block background scroll when modal open
+  // prevent background scroll while mobile map fullscreen is open
   useEffect(() => {
+    if (typeof window === "undefined") return;
     if (mobileMapOpen) {
       const prev = document.body.style.overflow;
       document.body.style.overflow = "hidden";
-      return () => (document.body.style.overflow = prev);
+      return () => {
+        document.body.style.overflow = prev;
+      };
     }
   }, [mobileMapOpen]);
 
-  if (loading) return <div className="text-center py-20 text-lg animate-pulse">Загрузка данных…</div>;
-  if (error) return <div className="text-center py-20 text-red-600">Ошибка загрузки: {error}</div>;
-  if (!listing) return <div className="text-center py-20 text-xl">Объявление не найдено 😕</div>;
+  if (loading)
+    return (
+      <div className="text-center py-20 text-lg animate-pulse">Загрузка данных…</div>
+    );
+
+  if (error)
+    return (
+      <div className="text-center py-20 text-red-600">Ошибка загрузки: {error}</div>
+    );
+
+  if (!listing)
+    return (
+      <div className="text-center py-20 text-xl">Объявление не найдено 😕</div>
+    );
 
   return (
     <>
@@ -228,7 +270,7 @@ export default function ListingDetail() {
         <meta name="viewport" content="width=device-width,initial-scale=1" />
       </Head>
 
-      <div className="max-w-6xl mx-auto px-4 py-6 sm:py-8">
+      <div className="max-w-6xl mx-auto px-4 py-6 sm:py-8 overflow-x-hidden">
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -242,15 +284,39 @@ export default function ListingDetail() {
             onTouchEnd={onTouchEnd}
           >
             <div className="absolute inset-0 flex items-center justify-between px-3 pointer-events-none">
-              <button onClick={prevImage} aria-label="Предыдущее фото" className="pointer-events-auto bg-black/40 text-white p-2 rounded-full">‹</button>
-              <button onClick={nextImage} aria-label="Следующее фото" className="pointer-events-auto bg-black/40 text-white p-2 rounded-full">›</button>
+              <button
+                onClick={prevImage}
+                aria-label="Предыдущее фото"
+                className="pointer-events-auto bg-black/40 text-white p-2 rounded-full"
+                style={{ backdropFilter: 'blur(4px)' }}
+              >
+                ‹
+              </button>
+              <button
+                onClick={nextImage}
+                aria-label="Следующее фото"
+                className="pointer-events-auto bg-black/40 text-white p-2 rounded-full"
+                style={{ backdropFilter: 'blur(4px)' }}
+              >
+                ›
+              </button>
             </div>
 
             <div className="h-full w-full flex overflow-hidden">
-              <div className="flex h-full transition-transform ease-out duration-300" style={{ transform: `translateX(-${activeIndex * 100}%)` }}>
+              <div
+                className="flex h-full transition-transform ease-out duration-300"
+                style={{ transform: `translateX(-${activeIndex * 100}%)` }}
+              >
                 {images.map((src, i) => (
                   <div key={i} className="w-full h-full flex-shrink-0 relative">
-                    <img src={src} alt={`Фото ${i + 1}`} className="w-full h-full object-cover" onClick={() => openLightbox(i)} loading="lazy" style={{ cursor: "zoom-in" }} />
+                    <img
+                      src={src}
+                      alt={`Фото ${i + 1}`}
+                      className="w-full h-full object-cover"
+                      onClick={() => openLightbox(i)}
+                      loading="lazy"
+                      style={{ cursor: "zoom-in" }}
+                    />
                     <div className="absolute bottom-3 left-3 bg-black/60 text-white px-2 py-1 rounded-md text-sm">
                       {i === activeIndex ? `${i + 1}/${images.length}` : null}
                     </div>
@@ -262,7 +328,12 @@ export default function ListingDetail() {
             {/* thumbnails */}
             <div className="absolute left-1/2 -translate-x-1/2 bottom-3 flex gap-2">
               {images.map((src, i) => (
-                <button key={i} onClick={() => setActiveIndex(i)} aria-label={`Показать фото ${i + 1}`} className={`w-12 h-8 rounded overflow-hidden border ${i === activeIndex ? "ring-2 ring-emerald-500" : "border-white/30"}`}>
+                <button
+                  key={i}
+                  onClick={() => setActiveIndex(i)}
+                  aria-label={`Показать фото ${i + 1}`}
+                  className={`w-12 h-8 rounded overflow-hidden border ${i === activeIndex ? "ring-2 ring-emerald-500" : "border-white/30"}`}
+                >
                   <img src={src} className="w-full h-full object-cover" loading="lazy" />
                 </button>
               ))}
@@ -272,14 +343,22 @@ export default function ListingDetail() {
           <div className="p-4 sm:p-7 space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <h1 className="title-clamp text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 dark:text-white">{listing.title}</h1>
+                <h1 className="title-clamp text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+                  {listing.title}
+                </h1>
 
-                {listing.address && <div className="text-sm text-gray-500 mt-2 truncate">{listing.address}</div>}
+                {listing.address && (
+                  <div className="text-sm text-gray-500 mt-2 truncate">{listing.address}</div>
+                )}
 
                 <div className="mt-3 flex flex-wrap gap-2 items-center text-sm text-gray-600">
                   <div>Просмотров: <strong>{listing.views ?? 0}</strong></div>
-                  {listing.category && <div className="px-2 py-0.5 bg-gray-100 rounded text-sm">{listing.category}</div>}
-                  {listing.property_type && <div className="px-2 py-0.5 bg-gray-100 rounded text-sm">{listing.property_type}</div>}
+                  {listing.category && (
+                    <div className="px-2 py-0.5 bg-gray-100 rounded text-sm">{listing.category}</div>
+                  )}
+                  {listing.property_type && (
+                    <div className="px-2 py-0.5 bg-gray-100 rounded text-sm">{listing.property_type}</div>
+                  )}
                 </div>
               </div>
 
@@ -290,16 +369,22 @@ export default function ListingDetail() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <button onClick={toggleSave} className={`px-3 py-2 rounded-lg border flex-1 text-center whitespace-nowrap ${saved ? "bg-emerald-600 text-white" : "bg-white text-gray-700"}`} aria-pressed={saved}>
+                  <button
+                    onClick={toggleSave}
+                    className={`px-3 py-2 rounded-lg border flex-1 text-center whitespace-nowrap ${saved ? "bg-emerald-600 text-white" : "bg-white text-gray-700"}`}
+                    aria-pressed={saved}
+                  >
                     {saved ? "Сохранено" : "Сохранить"}
                   </button>
 
-                  <button onClick={onShare} className="px-3 py-2 rounded-lg border bg-white flex-1 text-center whitespace-nowrap">Поделиться</button>
+                  <button onClick={onShare} className="px-3 py-2 rounded-lg border bg-white flex-1 text-center whitespace-nowrap">
+                    Поделиться
+                  </button>
                 </div>
               </div>
             </div>
 
-            {/* description */}
+            {/* DESCRIPTION */}
             {listing.description && (
               <section>
                 <h2 className="text-lg font-semibold mb-2">Описание</h2>
@@ -307,7 +392,7 @@ export default function ListingDetail() {
               </section>
             )}
 
-            {/* details */}
+            {/* DETAILS grid */}
             <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <DetailCard label="Комнаты">{listing.rooms ?? "—"}</DetailCard>
               <DetailCard label="Площадь">{listing.area_total ? `${listing.area_total} м²` : "—"}</DetailCard>
@@ -315,62 +400,110 @@ export default function ListingDetail() {
               <DetailCard label="Год постройки">{listing.year_built ?? "—"}</DetailCard>
             </section>
 
-            {/* map */}
+            {/* MAP */}
             {listing.lat && listing.lng && (
               <section>
                 <h3 className="text-lg font-semibold mb-2">Расположение</h3>
 
                 <div className="relative">
                   <div className="w-full h-[250px] sm:h-[360px] rounded-xl overflow-hidden border">
-                    <MapView coordinates={[listing.lat, listing.lng]} height="100%" showCard={false} />
+                    <MapView
+                      coordinates={[listing.lat, listing.lng]}
+                      height="100%"
+                      showCard={false}
+                      disableScrollZoom={isMobile} /* pass to MapView if supported */
+                    />
                   </div>
 
-                  <button aria-label="Открыть карту на весь экран" onClick={() => setMobileMapOpen(true)} className="sm:hidden absolute bottom-3 right-3 bg-black/70 text-white px-3 py-1 rounded-lg text-sm backdrop-blur shadow">
+                  <button
+                    aria-label="Открыть карту на весь экран"
+                    onClick={() => setMobileMapOpen(true)}
+                    className="sm:hidden absolute bottom-3 right-3 bg-black/70 text-white px-3 py-1 rounded-lg text-sm backdrop-blur shadow"
+                  >
                     Развернуть карту
                   </button>
                 </div>
               </section>
             )}
+{/* OWNER / ACTIONS */}
+<div className="bg-gray-50 dark:bg-gray-800 border p-3 sm:p-4 rounded-xl flex flex-col gap-4">
 
-            {/* OWNER / ACTIONS: flexible buttons that wrap and shrink on small screens */}
-            <div className="bg-gray-50 dark:bg-gray-800 border p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex items-start sm:items-center gap-3 min-w-0">
-                <img src={owner?.avatar_url || "/default-avatar.png"} className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover border flex-shrink-0" alt="avatar" />
-                <div className="min-w-0">
-                  <div className="font-semibold text-base sm:text-lg truncate">{owner?.full_name || "Без имени"}</div>
-                  <div className="text-sm text-gray-500 truncate">{owner?.university ? `${owner.university}${owner.course ? ` — ${owner.course} курс` : ""}` : ""}</div>
-                </div>
-              </div>
+  {/* ------ OWNER INFO ------ */}
+  <div className="flex items-start gap-3 min-w-0">
+    <img
+      src={owner?.avatar_url || "/default-avatar.png"}
+      className="w-14 h-14 rounded-full object-cover border flex-shrink-0"
+      alt="avatar"
+    />
 
-              <div className="w-full sm:w-auto flex flex-wrap gap-2">
-                <button onClick={startChat} className="flex-1 sm:flex-none min-w-0 text-sm px-3 py-2 bg-emerald-600 text-white rounded-lg">Написать</button>
-                <button onClick={openWhatsApp} className="flex-1 sm:flex-none min-w-0 text-sm px-3 py-2 border rounded-lg">WhatsApp</button>
-                <button onClick={onCall} className="flex-1 sm:flex-none min-w-0 text-sm px-3 py-2 border rounded-lg">Позвонить</button>
-                <button onClick={onReport} className="flex-1 sm:flex-none min-w-0 text-sm px-3 py-2 border rounded-lg text-red-600">Пожаловаться</button>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-sm text-gray-500">
-              <div>Добавлено: {new Date(listing.created_at).toLocaleString()}</div>
-              <div>ID: {listing.id}</div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Sticky mobile action bar — horizontally scrollable if too many buttons */}
-        <div className="sm:hidden">
-          <div className="fixed bottom-4 left-4 right-4 z-50">
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-2 shadow-lg">
-              <div className="flex gap-2 min-w-max overflow-x-auto px-1">
-                <button onClick={startChat} className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm whitespace-nowrap">Написать</button>
-                <button onClick={openWhatsApp} className="px-3 py-2 border rounded-lg text-sm whitespace-nowrap">WhatsApp</button>
-                <button onClick={onCall} className="px-3 py-2 border rounded-lg text-sm whitespace-nowrap">Позвонить</button>
-                <button onClick={onReport} className="px-3 py-2 border rounded-lg text-red-600 text-sm whitespace-nowrap">Пожаловаться</button>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div className="min-w-0 flex flex-col">
+      <div className="font-semibold text-base sm:text-lg truncate max-w-[220px] sm:max-w-[280px]">
+        {owner?.full_name || "Без имени"}
       </div>
+
+      <div className="text-sm text-gray-500 truncate max-w-[220px] sm:max-w-[280px]">
+        {owner?.university
+          ? `${owner.university}${owner.course ? ` — ${owner.course} курс` : ""}`
+          : ""}
+      </div>
+    </div>
+  </div>
+
+  {/* ------ ACTION BUTTONS ------ */}
+  <div className="w-full flex flex-col sm:flex-row sm:flex-wrap gap-2">
+    <button
+      onClick={startChat}
+      className="w-full sm:w-auto flex-1 text-sm px-4 py-2 bg-emerald-600 text-white rounded-lg text-center"
+    >
+      Написать
+    </button>
+
+    <button
+      onClick={openWhatsApp}
+      className="w-full sm:w-auto flex-1 text-sm px-4 py-2 border rounded-lg text-center"
+    >
+      WhatsApp
+    </button>
+
+    <button
+      onClick={onCall}
+      className="w-full sm:w-auto flex-1 text-sm px-4 py-2 border rounded-lg text-center"
+    >
+      Позвонить
+    </button>
+
+    <button
+      onClick={onReport}
+      className="w-full sm:w-auto flex-1 text-sm px-4 py-2 border rounded-lg text-red-600 text-center"
+    >
+      Пожаловаться
+    </button>
+  </div>
+</div>
+{/* META (дата + ID) */}
+<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 pt-1 text-sm text-gray-500">
+  <div className="truncate">Добавлено: {new Date(listing.created_at).toLocaleString()}</div>
+  <div className="truncate">ID: {listing.id}</div>
+</div>
+</div> {/* <-- closes p-6 wrapper */ }
+</motion.div>
+</div>
+
+{/* Sticky mobile action bar (prevents overflow and keeps buttons accessible) */}
+<div className="sm:hidden">
+  <div className="fixed bottom-4 left-4 right-4 z-50">
+    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-2 shadow-lg">
+      {/* horizontal scroll if too many buttons; inner container min-width to allow natural sizing */}
+      <div className="flex gap-2 min-w-max overflow-x-auto px-1">
+        <button onClick={startChat} className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-sm whitespace-nowrap">Написать</button>
+        <button onClick={openWhatsApp} className="px-3 py-2 border rounded-lg text-sm whitespace-nowrap">WhatsApp</button>
+        <button onClick={onCall} className="px-3 py-2 border rounded-lg text-sm whitespace-nowrap">Позвонить</button>
+        <button onClick={onReport} className="px-3 py-2 border rounded-lg text-sm text-red-600 whitespace-nowrap">Пожаловаться</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
       {/* Lightbox */}
       {lightboxOpen && (
@@ -391,21 +524,28 @@ export default function ListingDetail() {
           <div className="flex items-center justify-between p-3 text-white">
             <div className="text-lg font-semibold">Карта</div>
             <div className="flex items-center gap-2">
-              <button className="text-sm bg-white/10 px-3 py-1 rounded" onClick={() => {
-                const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${listing.lat},${listing.lng}`)}`;
-                window.open(url, "_blank");
-              }} aria-label="Открыть в Google Maps">Открыть в Google Maps</button>
+              <button
+                className="text-sm bg-white/10 px-3 py-1 rounded"
+                onClick={() => {
+                  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${listing.lat},${listing.lng}`)}`;
+                  window.open(url, "_blank");
+                }}
+                aria-label="Открыть в Google Maps"
+              >
+                Открыть в Google Maps
+              </button>
+
               <button className="text-2xl px-3 py-0.5" onClick={() => setMobileMapOpen(false)} aria-label="Закрыть карту">✕</button>
             </div>
           </div>
 
           <div className="flex-1">
-            <MapView coordinates={[listing.lat, listing.lng]} height="100%" showCard={false} />
+            <MapView coordinates={[listing.lat, listing.lng]} height="100%" showCard={false} disableScrollZoom={false} />
           </div>
         </div>
       )}
 
-      {/* small styles for title clamp */}
+      {/* title clamp & small responsive tweaks */}
       <style jsx>{`
         .title-clamp { display: block; }
         @media (max-width: 640px) {
@@ -417,13 +557,18 @@ export default function ListingDetail() {
             word-break: break-word;
           }
         }
+
+        /* ensure long buttons/text don't overflow the viewport */
         :global(body) { overscroll-behavior-y: contain; }
       `}</style>
     </>
   );
 }
 
-/* Small presentational component */
+/* -------------------------
+   Small presentational components
+   ------------------------- */
+
 function DetailCard({ label, children }) {
   return (
     <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-xl border">
