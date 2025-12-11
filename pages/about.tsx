@@ -70,7 +70,7 @@ const Avatar: React.FC<{ src?: string; name: string; size?: number }> = React.me
   const [loaded, setLoaded] = React.useState(false);
 
   return (
-    <div className="w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-gray-100 to-white dark:from-gray-800 dark:to-gray-900 shadow-sm ring-1 ring-gray-100 dark:ring-gray-700">
+    <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-gray-100 to-white dark:from-gray-800 dark:to-gray-900 shadow-sm ring-1 ring-gray-100 dark:ring-gray-700">
       <img
         src={imgSrc}
         alt={name}
@@ -143,8 +143,8 @@ const DevCard: React.FC<{ dev: Dev; onOpen: (d: Dev) => void; index: number }> =
         if (e.key === "Enter" || e.key === " ") onOpen(dev);
       }}
       aria-label={`О карточке разработчика ${dev.name}`}
-      className={`w-full bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-lg transform transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer animate-fadeInUp`}>
-      <div className="flex gap-4 items-start">
+      className={`w-full bg-white dark:bg-gray-800 p-3 rounded-2xl shadow-lg transform transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer animate-fadeInUp`}>
+      <div className="flex gap-3 items-start">
         <div className="flex-shrink-0">
           <Avatar src={dev.photo} name={dev.name} />
         </div>
@@ -294,15 +294,15 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
   };
 
   return (
-    <section className="p-4 sm:p-8 max-w-5xl mx-auto">
+    <section className="p-3 sm:p-8 max-w-5xl mx-auto">
       {/* Inline component-specific styles for animations */}
       <style>{`
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fadeInUp { animation: fadeInUp 420ms ease both; }
       `}</style>
 
-      <header className="mb-4 bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 rounded-2xl p-4 sm:p-6 shadow-inner">
-        <div className="flex items-start justify-between gap-4">
+      <header className="mb-4 bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 rounded-2xl p-3 sm:p-6 shadow-inner">
+        <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-gray-100">{title || "О проекте Korshi.kz"}</h1>
             <p className="text-sm sm:text-base text-gray-600 dark:text-gray-300 mt-1">{description || "Korshi.kz — платформа для поиска соседей и жилья по Казахстану. Создана для студентов, айтишников и всех, кто ищет комфортное жильё и дружелюбных соседей 💙"}</p>
@@ -387,7 +387,7 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {filtered.map((dev, i) => (
           <DevCard key={dev.name + i} dev={dev} index={i} onOpen={(d) => setSelected(d)} />
         ))}
@@ -399,16 +399,16 @@ export default function About({ developers = DEFAULT_DEVS, title, description }:
           role="dialog"
           aria-modal="true"
           aria-label={`Детали разработчика ${selected.name}`}
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-3 bg-black/60"
           onClick={() => setSelected(null)}
         >
           <div
             ref={modalRef}
             onClick={(e) => e.stopPropagation()}
-            className="w-full h-[92vh] sm:h-auto sm:max-w-2xl bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl p-4 sm:p-6 shadow-2xl overflow-auto"
+            className="w-full h-[92vh] sm:h-auto sm:max-w-2xl bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl p-3 sm:p-6 shadow-2xl overflow-auto"
             aria-live="polite"
           >
-            <div className="flex items-start gap-4">
+            <div className="flex items-start gap-3">
               <Avatar src={selected.photo} name={selected.name} size={140} />
               <div className="flex-1">
                 <h4 className="text-lg font-bold text-gray-900 dark:text-gray-100">{selected.name}</h4>
