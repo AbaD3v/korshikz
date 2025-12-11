@@ -29,7 +29,7 @@ type AboutProps = {
 const DEFAULT_DEVS: Dev[] = [
   {
     name: "Маметжан Абзал",
-    role: "Full-Stack Engineer | UI/UX Designer | Optimization & Performance Specialist | QA & Support",
+    role: "Full-Stack Engineer | UI/UX Designer | Optimization & Performance Specialist | QA & Support | DevOps Enthusiast | Project Coordinator | Team Leader",
     bio: "Абзал — универсальный разработчик проекта Korshi.kz. От фронтенда до бэкенда, от дизайна до оптимизации — я создаю комплексные решения, которые делают жизнь пользователей проще и приятнее. Люблю продумывать удобные интерфейсы и красивые решения, которые действительно работают 💙",
     photo: "https://github.com/AbaD3v.png",
     social: {
