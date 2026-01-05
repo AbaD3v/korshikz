@@ -1,27 +1,48 @@
 import "/styles/globals.css";
 import { useState, useEffect } from "react";
+
 import Header from "/components/Header";
 import Footer from "/components/Footer";
 
+import ChatbotProvider from "/chatbot-ui/ChatbotProvider";
+import ChatbotFloatingButton from "/chatbot-ui/ChatbotFloatingButton";
+import ChatbotBootstrap from "/chatbot-ui/ChatbotBootstrap";
+
 export default function App({ Component, pageProps }) {
   const [theme, setTheme] = useState("light");
-  const [city, setCity] = useState("Алматы"); // ✅ Добавили состояние города
+  const [city, setCity] = useState("Алматы");
 
+  // theme sync
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
   return (
-    <div className={theme === "dark" ? "bg-gray-900 text-white" : "bg-white text-gray-900"}>
-      {/* Передаём city и setCity в Header */}
-      <Header theme={theme} setTheme={setTheme} city={city} setCity={setCity} />
-      
-      <main className="min-h-screen">
-        {/* Передаём город дальше — если нужно фильтровать объявления */}
-        <Component {...pageProps} city={city} />
-      </main>
+    <ChatbotProvider storageKey="korshi-chat">
+      <ChatbotBootstrap />
 
-      <Footer theme={theme} />
-    </div>
+      <div
+        className={
+          theme === "dark"
+            ? "bg-gray-900 text-white min-h-screen"
+            : "bg-white text-gray-900 min-h-screen"
+        }
+      >
+        <Header
+          theme={theme}
+          setTheme={setTheme}
+          city={city}
+          setCity={setCity}
+        />
+
+        <main className="min-h-screen">
+          <Component {...pageProps} city={city} />
+        </main>
+
+        <Footer theme={theme} />
+      </div>
+
+      <ChatbotFloatingButton />
+    </ChatbotProvider>
   );
 }
