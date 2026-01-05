@@ -104,20 +104,24 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               className="flex"
+              // inline style override — гарантирует выравнивание даже при конфликтных глобальных стилях
+              style={{ justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}
             >
               <div
                 className={`
                   max-w-[75%] px-4 py-2 rounded-2xl leading-relaxed break-words
                   ${m.role === "user"
-                    ? "ml-auto bg-indigo-600 text-gray-900 dark:text-white rounded-br-none"
-                    : "mr-auto bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-bl-none"
+                    ? "bg-indigo-600 dark:bg-indigo-600 text-black dark:text-white rounded-br-none"
+                    : "bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-bl-none"
                   }
                 `}
-                style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start" }}
               >
                 {m.text}
                 <div className="mt-1 text-[10px] opacity-70 text-gray-600 dark:text-gray-300">
-                  {new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {new Date(m.timestamp).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </div>
               </div>
             </motion.div>
@@ -130,7 +134,8 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex justify-start"
+                className="flex"
+                style={{ justifyContent: "flex-start" }} // partial — всегда от бота (слева)
               >
                 <div className="max-w-[75%] px-4 py-2 rounded-2xl bg-gray-300 dark:bg-gray-600 italic flex gap-1 rounded-bl-none">
                   {partial}
