@@ -184,7 +184,7 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
           <button
             type="submit"
             disabled={isStreaming}
-            className="h-10 px-4 rounded-xl bg-indigo-600 text-white disabled:opacity-50"
+            className="h-10 px-4 rounded-xl bg-indigo-600 text-black disabled:opacity-50"
           >
             →
           </button>
