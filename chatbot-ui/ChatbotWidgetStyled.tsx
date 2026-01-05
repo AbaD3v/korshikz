@@ -12,13 +12,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChatbotContext } from "./ChatbotProvider";
 import useChatbotStreaming from "./useChatbotStreaming";
 
-// You can control the widget height two ways:
-// 1) Pass a `height` prop to the component: <ChatbotWidgetStyled height="280px" />
-// 2) Set a CSS variable on the page: `:root { --chatbot-height: 280px }`
-// The component will use the prop first, then the CSS variable, then the default.
 export default function ChatbotWidgetStyled({ height }: { height?: string }) {
-  const { messages, sendMessage, isStreaming } =
-    useContext(ChatbotContext);
+  const { messages, sendMessage, isStreaming } = useContext(ChatbotContext);
   const { partial } = useChatbotStreaming();
 
   const [input, setInput] = useState("");
@@ -28,11 +23,9 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const [formHeight, setFormHeight] = useState<number>(0);
 
   const displayPartial =
-    Boolean(partial) &&
-    partial !== messages[messages.length - 1]?.text;
+    Boolean(partial) && partial !== messages[messages.length - 1]?.text;
 
   /* ---------- textarea autosize ---------- */
   useEffect(() => {
@@ -47,31 +40,17 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
     const el = listRef.current;
     if (!el) return;
     const threshold = 80;
-    const atBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight <
-      threshold;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
     setIsAtBottom(atBottom);
   }
 
   /* ---------- smart autoscroll ---------- */
   useEffect(() => {
     if (!isAtBottom) return;
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "end",
+    requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     });
   }, [messages.length, partial, isAtBottom]);
-
-  /* ---------- measure input/form height ---------- */
-  useLayoutEffect(() => {
-    function update() {
-      const h = formRef.current?.offsetHeight ?? 0;
-      setFormHeight(h);
-    }
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, [input]);
 
   /* ---------- submit ---------- */
   function submit() {
@@ -79,9 +58,7 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
     if (!text) return;
     sendMessage(text);
     setInput("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
   }
 
   return (
@@ -95,21 +72,18 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
         border border-gray-200 dark:border-gray-800
         flex flex-col
         overflow-hidden
+        min-h-0
         text-sm
       `}
       role="dialog"
       aria-label="Chatbot"
       style={{
-        height:
-          height ??
-          (typeof window !== "undefined"
-            ? (getComputedStyle(document.documentElement).getPropertyValue("--chatbot-height") || "320px")
-            : "320px"),
+        height: height ? height : undefined,
         maxHeight: "70vh",
       }}
     >
       {/* ---------- HEADER ---------- */}
-      <div className="shrink-0 px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-indigo-600 to-pink-600 text-white">
+      <div className="shrink-0 px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-indigo-600 to-pink-600 text-black">
         <div className="font-semibold">Korshi Chat</div>
         <div className="text-xs opacity-80">
           Помощник по поиску соседей и аренде
@@ -120,11 +94,8 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
       <div
         ref={listRef}
         onScroll={handleScroll}
-        className="relative flex-1 overflow-y-auto px-4 py-4 bg-gray-50 dark:bg-gray-900"
-        style={{
-          // ensure messages area has bottom padding that matches the input/form
-          paddingBottom: formHeight ? formHeight + 12 : 20,
-        }}
+        className="relative flex-1 min-h-0 overflow-y-auto px-4 py-4 bg-gray-50 dark:bg-gray-900"
+        style={{ paddingBottom: 10 }}
       >
         <div className="flex flex-col gap-3">
           {messages.map((m: any) => (
@@ -132,30 +103,21 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
               key={m.id}
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`flex ${
-                m.role === "user"
-                  ? "justify-end"
-                  : "justify-start"
-              }`}
+              className="flex"
             >
               <div
                 className={`
-                  max-w-[75%] px-4 py-2 rounded-2xl
-                  leading-relaxed break-words
-                  ${
-                    m.role === "user"
-                      ? "bg-indigo-600 text-white rounded-br-none"
-                      : "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-bl-none"
+                  max-w-[75%] px-4 py-2 rounded-2xl leading-relaxed break-words
+                  ${m.role === "user"
+                    ? "ml-auto bg-indigo-600 text-gray-900 dark:text-white rounded-br-none"
+                    : "mr-auto bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-bl-none"
                   }
                 `}
                 style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start" }}
               >
                 {m.text}
-                <div className="mt-1 text-[10px] opacity-70">
-                  {new Date(m.timestamp).toLocaleTimeString(
-                    [],
-                    { hour: "2-digit", minute: "2-digit" }
-                  )}
+                <div className="mt-1 text-[10px] opacity-70 text-gray-600 dark:text-gray-300">
+                  {new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </div>
               </div>
             </motion.div>
@@ -185,9 +147,7 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
         {!isAtBottom && (
           <button
             onClick={() =>
-              bottomRef.current?.scrollIntoView({
-                behavior: "smooth",
-              })
+              bottomRef.current?.scrollIntoView({ behavior: "smooth" })
             }
             className="absolute right-4 bottom-4 px-3 py-1 rounded-full bg-gray-800 text-white text-xs shadow"
           >
@@ -196,14 +156,15 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
         )}
       </div>
 
-      {/* ---------- INPUT (FIXED) ---------- */}
+      {/* ---------- INPUT (STICKY INSIDE WIDGET) ---------- */}
       <form
         ref={formRef}
         onSubmit={(e: FormEvent) => {
           e.preventDefault();
           submit();
         }}
-        className="shrink-0 px-4 py-3 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+        className="shrink-0 px-4 py-3 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 sticky bottom-0 z-10"
+        style={{ boxSizing: "border-box" }}
       >
         <div className="flex gap-2 items-end">
           <textarea
@@ -220,7 +181,6 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
               }
             }}
           />
-
           <button
             type="submit"
             disabled={isStreaming}

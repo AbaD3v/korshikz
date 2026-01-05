@@ -17,6 +17,8 @@ export default function ChatbotFloatingButton() {
   const [pulse, setPulse] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [pos, setPos] = useState({ right: 24, bottom: 80 });
+  const widgetRef = useRef<HTMLDivElement | null>(null);
+  const [widgetHeight, setWidgetHeight] = useState(0);
   const dragRef = useRef<{ startX: number; startY: number; startRight: number; startBottom: number } | null>(null);
 
   // Mount flag for portal/hydration safety
@@ -24,6 +26,17 @@ export default function ChatbotFloatingButton() {
     setMounted(true);
     return () => setMounted(false);
   }, []);
+
+  // measure widget height when open
+  useEffect(() => {
+    function update() {
+      const h = widgetRef.current?.offsetHeight ?? 0;
+      setWidgetHeight(h);
+    }
+    if (open) update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [open]);
 
   // mobile detection
   const [isMobile, setIsMobile] = useState(false);
@@ -42,7 +55,7 @@ export default function ChatbotFloatingButton() {
       if (e.key === "Escape") setOpen(false);
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey); 
   }, []);
 
   // Subscribe to messages to show unread indicator when widget is closed
@@ -106,18 +119,23 @@ export default function ChatbotFloatingButton() {
           exit={{ opacity: 0, y: 12, scale: 0.98 }}
           transition={{ duration: 0.18 }}
           style={
-            isMobile
-              ? { position: "fixed", left: 8, right: 8, bottom: Math.max(8, pos.bottom), zIndex: 2147483646 }
-              : { position: "fixed", right: pos.right, bottom: pos.bottom + 64, zIndex: 2147483646 }
-          }
+              (() => {
+                if (isMobile) return { position: "fixed", left: 8, right: 8, bottom: Math.max(8, pos.bottom), zIndex: 2147483646 };
+                // clamp bottom so widget stays in viewport
+                const maxBottom = Math.max(8, window.innerHeight - widgetHeight - 8);
+                const desired = pos.bottom + 64;
+                const bottom = Math.min(desired, maxBottom);
+                return { position: "fixed", right: pos.right, bottom, zIndex: 2147483646 };
+              })()
+            }
         >
-          {isMobile ? (
-            <ChatbotWidgetStyled />
-          ) : (
-            <div style={{ width: 360 }}>
+            {isMobile ? (
               <ChatbotWidgetStyled />
-            </div>
-          )}
+            ) : (
+              <div ref={widgetRef} style={{ width: 360 }}>
+                <ChatbotWidgetStyled />
+              </div>
+            )}
         </motion.div>
       )}
     </AnimatePresence>
