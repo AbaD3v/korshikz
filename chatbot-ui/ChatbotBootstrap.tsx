@@ -9,13 +9,12 @@ export default function ChatbotBootstrap() {
 
   useEffect(() => {
     const bot = createKorshiBot();
-    ctx.setStreamingProvider?.(bot);
 
     // Auto-greeting: если нет сообщений от пользователя
     if (!ctx.messages.length) {
       // небольшая задержка для естественности
       setTimeout(() => {
-        ctx.sendMessage(""); // пустой текст → бот обработает как старт
+        ctx.sendMessage("Здравствуйте! Мне нужна ваша помощь"); // пустой текст → бот обработает как старт
       }, 300);
     }
   }, [ctx]);

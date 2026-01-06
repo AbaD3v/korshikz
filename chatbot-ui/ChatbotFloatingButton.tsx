@@ -1,3 +1,4 @@
+// ChatbotFloatingButton.tsx
 "use client";
 
 import React, { useContext, useEffect, useRef, useState } from "react";
@@ -21,13 +22,11 @@ export default function ChatbotFloatingButton() {
   const [widgetHeight, setWidgetHeight] = useState(0);
   const dragRef = useRef<{ startX: number; startY: number; startRight: number; startBottom: number } | null>(null);
 
-  // Mount flag for portal/hydration safety
   useEffect(() => {
     setMounted(true);
     return () => setMounted(false);
   }, []);
 
-  // measure widget height when open
   useEffect(() => {
     function update() {
       const h = widgetRef.current?.offsetHeight ?? 0;
@@ -38,7 +37,6 @@ export default function ChatbotFloatingButton() {
     return () => window.removeEventListener("resize", update);
   }, [open]);
 
-  // mobile detection
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     function update() {
@@ -49,36 +47,18 @@ export default function ChatbotFloatingButton() {
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  // Escape key closes
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey); 
+    return () => document.removeEventListener("keydown", onKey);
   }, []);
-
-  // Subscribe to messages to show unread indicator when widget is closed
-  useEffect(() => {
-    if (!ctx?.subscribe) return;
-    const unsub = ctx.subscribe((msg?: Message) => {
-      if (!msg) return;
-      if (msg.role === "ai") {
-        if (!open) {
-          setUnread((u) => u + 1);
-          setPulse(true);
-          window.setTimeout(() => setPulse(false), 800);
-        }
-      }
-    });
-    return unsub;
-  }, [ctx, open]);
 
   useEffect(() => {
     if (open) setUnread(0);
   }, [open]);
 
-  // Drag handlers
   function onPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
     e.currentTarget.setPointerCapture?.(e.pointerId);
     dragRef.current = {
@@ -119,23 +99,32 @@ export default function ChatbotFloatingButton() {
           exit={{ opacity: 0, y: 12, scale: 0.98 }}
           transition={{ duration: 0.18 }}
           style={
-              (() => {
-                if (isMobile) return { position: "fixed", left: 8, right: 8, bottom: Math.max(8, pos.bottom), zIndex: 2147483646 };
-                // clamp bottom so widget stays in viewport
-                const maxBottom = Math.max(8, window.innerHeight - widgetHeight - 8);
-                const desired = pos.bottom + 64;
-                const bottom = Math.min(desired, maxBottom);
-                return { position: "fixed", right: pos.right, bottom, zIndex: 2147483646 };
-              })()
-            }
+            (() => {
+              if (isMobile)
+                return {
+                  position: "fixed",
+                  left: 8,
+                  right: 8,
+                  bottom: Math.max(8, pos.bottom),
+                  zIndex: 2147483646,
+                };
+              const maxBottom = Math.max(8, window.innerHeight - widgetHeight - 8);
+              const desired = pos.bottom-65;
+              const bottom = Math.min(desired, maxBottom);
+              return { position: "fixed", right: pos.right, bottom, zIndex: 2147483646 };
+            })()
+          }
         >
-            {isMobile ? (
-              <ChatbotWidgetStyled />
-            ) : (
-              <div ref={widgetRef} style={{ width: 360 }}>
-                <ChatbotWidgetStyled />
-              </div>
-            )}
+          {isMobile ? (
+            <ChatbotWidgetStyled height="70vh" />
+          ) : (
+            <div
+              ref={widgetRef}
+              style={{ width: 360, height: "70vh", maxHeight: "70vh" }}
+            >
+              <ChatbotWidgetStyled height="100%" />
+            </div>
+          )}
         </motion.div>
       )}
     </AnimatePresence>
@@ -170,12 +159,22 @@ export default function ChatbotFloatingButton() {
           justifyContent: "center",
           cursor: "pointer",
           border: "none",
+          position: "relative",
         }}
       >
-        <span style={{ transform: pulse ? "scale(1.08)" : undefined, transition: "transform .2s" }}>💬</span>
+        <span
+          style={{
+            transform: pulse ? "scale(1.08)" : undefined,
+            transition: "transform .2s",
+          }}
+        >
+          💬
+        </span>
         {unread > 0 && (
           <span style={{ position: "absolute", top: -6, right: -6 }}>
-            <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold leading-none text-white bg-red-500 rounded-full">{unread > 99 ? "99+" : unread}</span>
+            <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold leading-none text-white bg-red-500 rounded-full">
+              {unread > 99 ? "99+" : unread}
+            </span>
           </span>
         )}
       </button>

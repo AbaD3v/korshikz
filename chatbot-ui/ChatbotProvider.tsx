@@ -1,274 +1,221 @@
 // /chatbot-ui/ChatbotProvider.tsx
-"use client";
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
+import type { BotResponse } from "../chatbot/types/ChatbotTypes";
+import { createKorshiBot } from "../chatbot-ai/createKorshiBot";
+import { ONBOARDING_PROMPT } from "../chatbot-ai/prompts";
+import { getState, setState } from "../chatbot-ai/dialogState";
 
-import React, {
-  createContext,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  ReactNode,
-  useMemo,
-} from "react";
+/** Тип провайдера стриминга, совместимый с BotResponse */
+export type StreamingProvider = {
+  send?: (prompt: string, opts?: any) => Promise<BotResponse>;
+  stream?: (prompt: string, opts?: any) => AsyncGenerator<string, void, void>;
+};
 
 export type Message = {
   id: string;
   role: "user" | "ai";
   text: string;
   timestamp: number;
-  partial?: boolean; // true while streaming
-};
-
-export type StreamingProvider = {
-  // either provide async iterable of string chunks...
-  stream?: (prompt: string) => AsyncIterable<string> | Promise<AsyncIterable<string>>;
-  // ...or a simple send method that resolves once with the full text
-  send?: (prompt: string) => Promise<string>;
+  intent?: string;
+  confidence?: number;
+  links?: { label: string; href: string }[];
+  quickReplies?: string[];
+  partial?: boolean;
 };
 
 export type ChatbotContextType = {
   messages: Message[];
-  sendMessage: (text: string) => void;
-  subscribe: (cb: (msg?: Message) => void) => () => void;
-  streamingProvider?: StreamingProvider | undefined;
-  // helpers
-  isStreaming?: boolean;
-  clear?: () => void;
-  setStreamingProvider?: (p?: StreamingProvider) => void;
-  getStreamingProvider?: () => StreamingProvider | undefined;
+  sendMessage: (text: string) => Promise<void>;
+  isStreaming: boolean;
 };
 
-export const ChatbotContext = createContext<ChatbotContextType>({
-  messages: [],
-  sendMessage: () => {},
-  subscribe: () => () => {},
-  streamingProvider: undefined,
-});
+export const ChatbotContext = createContext<ChatbotContextType | undefined>(undefined);
 
-type ProviderProps = {
-  children: ReactNode;
-  initialMessages?: Message[];
-  maxMessages?: number;
-  storageKey?: string; // optional persistence
+export const useChatbot = (): ChatbotContextType => {
+  const ctx = useContext(ChatbotContext);
+  if (!ctx) throw new Error("useChatbot must be used within ChatbotProvider");
+  return ctx;
+};
+
+export type ChatbotProviderProps = {
+  children: React.ReactNode;
+  storageKey?: string;
   streamingProvider?: StreamingProvider;
 };
 
-function genId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+function makeSafeProvider(raw: Partial<StreamingProvider>): Required<StreamingProvider> {
+  const safeSend =
+    raw.send ??
+    (async (prompt: string, opts?: any) => {
+      if (!raw.stream) throw new Error("Provider has neither send nor stream");
+      let accumulated = "";
+      for await (const chunk of raw.stream(prompt, opts)) {
+        accumulated += chunk;
+      }
+      return {
+        text: accumulated,
+        confidence: 1,
+      } as BotResponse;
+    });
+
+  const streamFn = raw.stream ? raw.stream.bind(raw) : undefined;
+
+  return {
+    send: safeSend,
+    stream: streamFn ?? undefined,
+  } as Required<StreamingProvider>;
 }
 
-export default function ChatbotProvider({
-  children,
-  initialMessages = [],
-  maxMessages = 200,
-  storageKey,
-  streamingProvider: initialStreamingProvider,
-}: ProviderProps) {
-  const [messages, setMessages] = useState<Message[]>(() => {
-    if (typeof window !== "undefined" && storageKey) {
+export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({ children, storageKey, streamingProvider }) => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const botRef = useRef<Required<StreamingProvider> | null>(null);
+
+  useEffect(() => {
+    if (!botRef.current) {
       try {
-        const raw = localStorage.getItem(storageKey);
-        if (raw) {
-          const parsed = JSON.parse(raw) as Message[];
-          if (Array.isArray(parsed)) return parsed;
-        }
-      } catch {
-        // ignore parse errors
+        const raw = streamingProvider ?? (createKorshiBot() as Partial<StreamingProvider>);
+        botRef.current = makeSafeProvider(raw);
+      } catch (e) {
+        console.error("Failed to initialize chatbot provider:", e);
+        botRef.current = {
+          send: async () => ({ text: "Ошибка инициализации бота", intent: "error", confidence: 0 }),
+          stream: undefined,
+        };
       }
     }
-    return initialMessages;
-  });
+  }, [streamingProvider]);
 
-  const [isStreaming, setIsStreaming] = useState(false);
-  const streamingProviderRef = useRef<StreamingProvider | undefined>(initialStreamingProvider);
-  const subscribersRef = useRef(new Set<(msg?: Message) => void>());
-  const activeStreamToken = useRef(0);
-  const partialUpdateTimer = useRef<number | null>(null);
+  // Загружаем историю
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Message[];
+        if (Array.isArray(parsed)) setMessages(parsed);
+      }
+    } catch {
+      // ignore
+    }
+  }, [storageKey]);
 
-  // persist history (best-effort)
+  // Сохраняем историю
   useEffect(() => {
     if (!storageKey) return;
     try {
       localStorage.setItem(storageKey, JSON.stringify(messages));
     } catch {
-      // ignore storage errors
+      // ignore
     }
   }, [messages, storageKey]);
 
-  // cleanup on unmount: cancel active stream
+  // Добавляем приветственное сообщение при первой загрузке
   useEffect(() => {
-    return () => {
-      // increment token to cancel any running stream loops
-      activeStreamToken.current += 1;
-      // clear any scheduled partial flush
-      if (partialUpdateTimer.current) {
-        window.clearTimeout(partialUpdateTimer.current);
-        partialUpdateTimer.current = null;
-      }
-    };
-  }, []);
-
-  const notify = useCallback((msg?: Message) => {
-    subscribersRef.current.forEach((cb) => {
-      try {
-        cb(msg);
-      } catch {
-        // swallow subscriber errors
-      }
-    });
-  }, []);
-
-  const addMessage = useCallback(
-    (m: Message) => {
-      setMessages((prev) => {
-        const next = [...prev, m].slice(-maxMessages);
-        return next;
-      });
-      notify(m);
-    },
-    [maxMessages, notify]
-  );
-
-  const updateMessage = useCallback(
-    (id: string, patch: Partial<Message>) => {
-      setMessages((prev) => {
-        let didChange = false;
-        const next = prev.map((m) => {
-          if (m.id !== id) return m;
-          didChange = true;
-          return { ...m, ...patch };
-        });
-        // if we didn't find the message id, keep prev unchanged
-        if (!didChange) return prev;
-        const updatedMsg = next.find((x) => x.id === id);
-        if (updatedMsg) {
-          // notify subscribers about updated message
-          notify(updatedMsg);
-        }
-        return next;
-      });
-    },
-    [notify]
-  );
-
-  const clear = useCallback(() => {
-    setMessages([]);
-    notify(undefined);
-  }, [notify]);
-
-  const subscribe = useCallback((cb: (msg?: Message) => void) => {
-    subscribersRef.current.add(cb);
-    // don't call immediately — let subscriber rely on messages array if needed
-    return () => subscribersRef.current.delete(cb);
-  }, []);
-
-  const setStreamingProvider = useCallback((p?: StreamingProvider) => {
-    streamingProviderRef.current = p;
-  }, []);
-
-  const getStreamingProvider = useCallback(() => streamingProviderRef.current, []);
-
-  // sendMessage: creates user message and triggers AI flow via provider if available
-  const sendMessage = useCallback(
-    (text: string) => {
-      const userMsg: Message = { id: genId(), role: "user", text, timestamp: Date.now() };
-      addMessage(userMsg);
-
-      const provider = streamingProviderRef.current;
-      if (!provider) return;
-
-      // cancel existing streams
-      activeStreamToken.current += 1;
-      const myToken = activeStreamToken.current;
-
-      // create AI placeholder (streaming)
-      const aiId = genId();
-      const aiMsg: Message = {
-        id: aiId,
+    if (messages.length === 0) {
+      const onboardingMsg: Message = {
+        id: crypto.randomUUID(),
         role: "ai",
-        text: "",
+        text: ONBOARDING_PROMPT,
         timestamp: Date.now(),
-        partial: true,
+        intent: "onboarding",
+        confidence: 1,
       };
-      addMessage(aiMsg);
+      setMessages([onboardingMsg]);
+      setState("onboarding");
+    }
+  }, [messages]);
+
+  const sendMessage = useCallback(async (text: string) => {
+    const userMsg: Message = { id: crypto.randomUUID(), role: "user", text, timestamp: Date.now() };
+    setMessages((m) => [...m, userMsg]);
+
+    // переключаем состояние диалога
+    if (text.toLowerCase().includes("квартира") || text.toLowerCase().includes("жильё")) {
+      setState("search");
+    } else {
+      setState("free");
+    }
+
+    const bot = botRef.current!;
+    if (bot.stream) {
       setIsStreaming(true);
+      const partialId = crypto.randomUUID();
+      const initialBotMsg: Message = { id: partialId, role: "ai", text: "", timestamp: Date.now(), partial: true };
+      setMessages((m) => [...m, initialBotMsg]);
 
-      // helper: if cancelled return true
-      const cancelled = () => activeStreamToken.current !== myToken;
-
-      (async () => {
-        try {
-          if (provider.stream) {
-            const iterable = await provider.stream(text);
-            // accumulate chunks but throttle updates to avoid very frequent re-renders
-            let acc = "";
-            let lastFlush = Date.now();
-            for await (const chunk of iterable) {
-              if (cancelled()) return;
-              acc += chunk;
-              // throttle: flush at most every 60ms (configurable)
-              const now = Date.now();
-              if (now - lastFlush > 60) {
-                // schedule immediate update
-                updateMessage(aiId, { text: acc, partial: true });
-                lastFlush = now;
-              } else {
-                // schedule a delayed flush if not already scheduled
-                if (partialUpdateTimer.current === null) {
-                  partialUpdateTimer.current = window.setTimeout(() => {
-                    partialUpdateTimer.current = null;
-                    updateMessage(aiId, { text: acc, partial: true });
-                    lastFlush = Date.now();
-                  }, 60 - (now - lastFlush));
-                }
-              }
-            }
-            if (cancelled()) return;
-            // final flush
-            if (partialUpdateTimer.current) {
-              window.clearTimeout(partialUpdateTimer.current);
-              partialUpdateTimer.current = null;
-            }
-            updateMessage(aiId, { text: acc, partial: false });
-          } else if (provider.send) {
-            const full = await provider.send(text);
-            if (cancelled()) return;
-            updateMessage(aiId, { text: full, partial: false });
-          } else {
-            updateMessage(aiId, {
-              text: "AI provider missing implementation.",
-              partial: false,
-            });
-          }
-        } catch (err) {
-          if (!cancelled()) {
-            updateMessage(aiId, {
-              text: `Ошибка: ${(err as Error)?.message ?? "unknown"}`,
-              partial: false,
-            });
-          }
-        } finally {
-          // only clear streaming flag if still our token
-          if (!cancelled()) setIsStreaming(false);
+      try {
+        const stream = bot.stream(text);
+        let accumulated = "";
+        for await (const chunk of stream) {
+          accumulated += chunk;
+          setMessages((prev) =>
+            prev.map((msg) => (msg.id === partialId ? { ...msg, text: accumulated, partial: true } : msg))
+          );
         }
-      })();
-    },
-    [addMessage, updateMessage]
-  );
 
-  const ctxValue = useMemo(
-    () => ({
-      messages,
-      sendMessage,
-      subscribe,
-      streamingProvider: streamingProviderRef.current,
-      isStreaming,
-      clear,
-      setStreamingProvider,
-      getStreamingProvider,
-    }),
-    [messages, sendMessage, subscribe, isStreaming, clear, setStreamingProvider, getStreamingProvider]
-  );
+        try {
+          const final = await bot.send(text);
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === partialId
+                ? {
+                    ...msg,
+                    text: final.text,
+                    partial: false,
+                    intent: final.intent,
+                    confidence: final.confidence,
+                    links: final.links,
+                    quickReplies: final.quickReplies,
+                    timestamp: Date.now(),
+                  }
+                : msg
+            )
+          );
+        } catch {
+          setMessages((prev) =>
+            prev.map((msg) => (msg.id === partialId ? { ...msg, text: accumulated, partial: false, timestamp: Date.now() } : msg))
+          );
+        }
+      } catch (e) {
+        console.error("Streaming error:", e);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === partialId
+              ? { ...msg, text: "Произошла ошибка при получении ответа.", partial: false, intent: "error", confidence: 0, timestamp: Date.now() }
+              : msg
+          )
+        );
+      } finally {
+        setIsStreaming(false);
+      }
+    } else {
+      setIsStreaming(true);
+      try {
+        const resp = await bot.send(text);
+        const botMsg: Message = {
+          id: crypto.randomUUID(),
+          role: "ai",
+          text: resp.text,
+          timestamp: Date.now(),
+          intent: resp.intent,
+          confidence: resp.confidence,
+          links: resp.links,
+          quickReplies: resp.quickReplies,
+          partial: false,
+        };
+        setMessages((m) => [...m, botMsg]);
+      } catch (e) {
+        console.error("Bot send error", e);
+        setMessages((m) => [
+          ...m,
+          { id: crypto.randomUUID(), role: "ai", text: "Произошла ошибка при обработке запроса.", timestamp: Date.now(), intent: "error", confidence: 0 },
+        ]);
+      } finally {
+        setIsStreaming(false);
+      }
+    }
+  }, []);
 
-  return <ChatbotContext.Provider value={ctxValue}>{children}</ChatbotContext.Provider>;
-}
+  return <ChatbotContext.Provider value={{ messages, sendMessage, isStreaming }}>{children}</ChatbotContext.Provider>;
+};

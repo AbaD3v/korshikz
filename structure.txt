@@ -108,8 +108,8 @@ C:\Users\abama\Desktop\KorshiKz\korshikz\.next\static\chunks\pages\_error.js
 C:\Users\abama\Desktop\KorshiKz\korshikz\.next\static\development\_buildManifest.js
 C:\Users\abama\Desktop\KorshiKz\korshikz\.next\static\development\_ssgManifest.js
 C:\Users\abama\Desktop\KorshiKz\korshikz\.next\static\webpack\633457081244afec._.hot-update.json
-C:\Users\abama\Desktop\KorshiKz\korshikz\components\Footer.js
-C:\Users\abama\Desktop\KorshiKz\korshikz\components\Header.js
+C:\Users\abama\Desktop\KorshiKz\korshikz\components\Footer.tsx
+C:\Users\abama\Desktop\KorshiKz\korshikz\components\Header.tsx
 C:\Users\abama\Desktop\KorshiKz\korshikz\lib\supabaseClient.js
 C:\Users\abama\Desktop\KorshiKz\korshikz\node_modules\.bin
 C:\Users\abama\Desktop\KorshiKz\korshikz\node_modules\.cache

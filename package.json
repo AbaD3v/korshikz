@@ -12,6 +12,7 @@
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@prisma/client": "^6.18.0",
     "@sparticuz/chromium-min": "^141.0.0",
     "@supabase/auth-helpers-nextjs": "^0.15.0",

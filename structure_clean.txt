@@ -12,8 +12,8 @@ C:\Users\abama\Desktop\KorshiKz\korshikz\README.md
 C:\Users\abama\Desktop\KorshiKz\korshikz\structure.txt
 C:\Users\abama\Desktop\KorshiKz\korshikz\styles
 C:\Users\abama\Desktop\KorshiKz\korshikz\tailwind.config.js
-C:\Users\abama\Desktop\KorshiKz\korshikz\components\Footer.js
-C:\Users\abama\Desktop\KorshiKz\korshikz\components\Header.js
+C:\Users\abama\Desktop\KorshiKz\korshikz\components\Footer.tsx
+C:\Users\abama\Desktop\KorshiKz\korshikz\components\Header.tsx
 C:\Users\abama\Desktop\KorshiKz\korshikz\lib\supabaseClient.js
 C:\Users\abama\Desktop\KorshiKz\korshikz\pages\about.js
 C:\Users\abama\Desktop\KorshiKz\korshikz\pages\api

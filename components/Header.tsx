@@ -1,9 +1,8 @@
-// components/HeaderVariants.jsx
 "use client";
 
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
 import ProfileButton from "./ProfileButton";
@@ -18,19 +17,22 @@ import {
   MessageCircle,
   Info,
   PlusCircle,
-  List
+  List,
 } from "lucide-react";
 
-/**
- * HeaderVariants.jsx
- * - Header: modern/default header with logo
- * - HeaderVisionPro: iOS Vision Pro styled floating header
- *
- * Make sure your logo file is at: /public/logo.png
- */
+type HeaderProps = {
+  theme: "light" | "dark";
+  setTheme?: (t: "light" | "dark") => void;
+  city: string;
+  setCity?: (c: string) => void;
+};
 
 /* ------------------ auth/profile hook ------------------ */
-function useAuthProfile(setUser, setProfile, router) {
+function useAuthProfile(
+  setUser: (u: any) => void,
+  setProfile: (p: any) => void,
+  router: ReturnType<typeof useRouter>
+) {
   useEffect(() => {
     let mounted = true;
     const fetchUser = async () => {
@@ -91,10 +93,10 @@ function useAuthProfile(setUser, setProfile, router) {
 }
 
 /* ------------------ Header (default) ------------------ */
-export function Header({ theme, setTheme, city, setCity }) {
+export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
   const [open, setOpen] = useState(false);
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
   const router = useRouter();
 
   useAuthProfile(setUser, setProfile, router);
@@ -122,7 +124,7 @@ export function Header({ theme, setTheme, city, setCity }) {
     { label: "О нас", href: "/about", kind: "default", Icon: Info },
   ];
 
-  const isActive = (href) => {
+  const isActive = (href: string) => {
     return router.pathname === href || router.pathname.startsWith(href + "/");
   };
 
@@ -135,10 +137,11 @@ export function Header({ theme, setTheme, city, setCity }) {
         border-b border-gray-200/60 dark:border-gray-700/60
         shadow-sm
       `}
+      role="banner"
     >
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
         {/* LOGO */}
-        <Link href="/" className="flex items-center gap-3">
+        <Link href="/" className="flex items-center gap-3" aria-label="Korshi.kz — главная">
           <Image
             src="/logo.jpg"
             alt="Korshi.kz logo"
@@ -158,7 +161,7 @@ export function Header({ theme, setTheme, city, setCity }) {
         </Link>
 
         {/* NAV (desktop) */}
-        <nav className="hidden md:flex items-center gap-4 flex-1 justify-center">
+        <nav aria-label="Main navigation" className="hidden md:flex items-center gap-4 flex-1 justify-center">
           <div className="flex items-center gap-3">
             {nav.map((item) => {
               const active = isActive(item.href);
@@ -221,6 +224,7 @@ export function Header({ theme, setTheme, city, setCity }) {
             onClick={toggleTheme}
             className={`flex items-center gap-2 px-3 py-1 rounded-full ${focusRing} bg-white/20 dark:bg-white/5 backdrop-blur-sm border border-white/5 hover:scale-105 transition`}
             aria-label="Переключить тему"
+            title={theme === "light" ? "Включить тёмную тему" : "Включить светлую тему"}
           >
             {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
             <span className="text-sm hidden sm:inline">{theme === "light" ? "Тёмная" : "Светлая"}</span>
@@ -231,6 +235,7 @@ export function Header({ theme, setTheme, city, setCity }) {
               <Link
                 href="/chat"
                 className={`inline-flex items-center gap-2 px-3 py-1 rounded-full ${focusRing} bg-white/10 dark:bg-white/5 backdrop-blur-sm border border-white/10 shadow-sm hover:scale-105 transition`}
+                aria-label="Чаты"
               >
                 <MessageCircle size={16} /> <span className="text-sm">Чаты</span>
               </Link>
@@ -240,6 +245,8 @@ export function Header({ theme, setTheme, city, setCity }) {
               <button
                 onClick={handleLogout}
                 className={`flex items-center gap-2 px-3 py-1 rounded-full text-white ${focusRing} bg-gradient-to-r from-red-500 to-rose-500 shadow-lg hover:opacity-95 transition`}
+                aria-label="Выйти"
+                title="Выйти"
               >
                 <LogOut size={16} /> <span className="text-sm hidden sm:inline">Выйти</span>
               </button>
@@ -249,6 +256,7 @@ export function Header({ theme, setTheme, city, setCity }) {
               <Link
                 href="/auth/login"
                 className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-white ${focusRing} bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 shadow-lg hover:scale-105 transform transition`}
+                aria-label="Войти"
               >
                 <LogIn size={16} /> <span className="text-sm">Войти</span>
               </Link>
@@ -256,6 +264,7 @@ export function Header({ theme, setTheme, city, setCity }) {
               <Link
                 href="/auth/register"
                 className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm ${focusRing} border-2 border-indigo-600 text-indigo-600 bg-white/5 hover:bg-indigo-600 hover:text-white transition`}
+                aria-label="Регистрация"
               >
                 <UserPlus size={16} /> <span>Регистрация</span>
               </Link>
@@ -328,9 +337,9 @@ export function Header({ theme, setTheme, city, setCity }) {
 }
 
 /* ------------------ HeaderVisionPro (iOS Vision Pro style) ------------------ */
-export function HeaderVisionPro({ theme, setTheme, city, setCity }) {
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+export function HeaderVisionPro({ theme, setTheme, city, setCity }: HeaderProps) {
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
   const router = useRouter();
 
   useAuthProfile(setUser, setProfile, router);
@@ -352,7 +361,7 @@ export function HeaderVisionPro({ theme, setTheme, city, setCity }) {
     { label: "О нас", href: "/about", Icon: Info },
   ];
 
-  const isActive = (href) => router.pathname === href || router.pathname.startsWith(href + "/");
+  const isActive = (href: string) => router.pathname === href || router.pathname.startsWith(href + "/");
 
   return (
     <>
@@ -454,6 +463,3 @@ export function HeaderVisionPro({ theme, setTheme, city, setCity }) {
     </>
   );
 }
-
-/* default export */
-export default Header;

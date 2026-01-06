@@ -22,10 +22,10 @@ export default function useChatbotStreaming() {
     // метод оставлен для API-совместимости
   }, []);
 
-  return {
-    partial,                  // текущий стримящийся текст
-    isStreaming: ctx?.isStreaming ?? false,
-    sendMessage: ctx?.sendMessage,
-    subscribe: ctx?.subscribe,
-  };
+return {
+  partial,
+  isStreaming: ctx?.isStreaming ?? false,
+  sendMessage: ctx?.sendMessage,
+  // убираем subscribe
+};
 }

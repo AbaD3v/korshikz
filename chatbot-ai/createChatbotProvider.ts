@@ -1,62 +1,53 @@
 // /chatbot-ai/createChatbotProvider.ts
-import type { StreamingProvider } from "../chatbot-ui/ChatbotProvider";
-import { SYSTEM_PROMPT, ONBOARDING_PROMPT } from "./prompts";
-import { getState, setState } from "./dialogState";
+import type { BotResponse, ResponseProvider } from "../chatbot/types/ChatbotTypes";
+import { createKorshiBot as createRawKorshiBot } from "./createKorshiBot";
 
-export function createChatbotProvider(): StreamingProvider {
-  return {
-    async *stream(userText: string) {
-      // 1. простая state machine using dialogState module
-      const dialogState = getState();
-      if (dialogState === "idle") {
-        setState("onboarding");
-        yield ONBOARDING_PROMPT + "\n";
-        return;
-      }
+/**
+ * Возвращает ResponseProvider, совместимый с типами проекта.
+ * - Если raw провайдер имеет send — используем его.
+ * - Если есть только stream — аккумулируем чанки и возвращаем BotResponse.
+ * - Если raw провайдер также предоставляет stream — прокидываем его в итоговый объект.
+ */
+export function createChatbotProvider(): ResponseProvider {
+  const raw = createRawKorshiBot() as any;
 
-      if (dialogState === "onboarding") {
-        if (/сосед/i.test(userText)) {
-          setState("search");
-          yield "Отлично. В каком городе ты ищешь соседа?";
-          return;
+  const rawProvider = raw as Partial<{
+    send: (prompt: string, opts?: any) => Promise<BotResponse>;
+    stream: (prompt: string, opts?: any) => AsyncGenerator<string, void, void>;
+  }>;
+
+  const getResponse = async (prompt: string, opts?: any): Promise<BotResponse> => {
+    // Если есть send — используем напрямую
+    if (typeof rawProvider.send === "function") {
+      return rawProvider.send(prompt, opts);
+    }
+
+    // Если есть stream — аккумулируем чанки в строку и возвращаем минимальный BotResponse
+    if (typeof rawProvider.stream === "function") {
+      let accumulated = "";
+      try {
+        for await (const chunk of rawProvider.stream(prompt, opts)) {
+          accumulated += chunk;
         }
-        if (/квартир|жиль/i.test(userText)) {
-          setState("search");
-          yield "Понял. В каком городе ты ищешь жильё?";
-          return;
-        }
-        yield "Я могу помочь с поиском жилья или соседа. Что именно?";
-        return;
+      } catch (e) {
+        // пробрасываем ошибку дальше, caller обработает
+        throw e;
       }
+      return {
+        text: accumulated,
+        intent: undefined,
+        confidence: 1,
+      } as BotResponse;
+    }
 
-      // 2. fallback → AI (stream response from /api/ai)
-      setState("free");
-      const res = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userText },
-          ],
-        }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        yield `Ошибка на сервере: ${res.status} ${text}`;
-        return;
-      }
-
-      const reader = res.body?.getReader();
-      if (!reader) return;
-
-      const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        yield decoder.decode(value);
-      }
-    },
+    throw new Error("Raw provider has neither send nor stream");
   };
+
+  const provider: ResponseProvider = {
+    getResponse,
+    // Прокидываем stream, если raw провайдер его предоставляет
+    stream: typeof rawProvider.stream === "function" ? rawProvider.stream.bind(rawProvider) : undefined,
+  };
+
+  return provider;
 }
