@@ -472,7 +472,7 @@ export const intents: Intent[] = [
     lang: "any",
     category: "abzalNeGay",
     priority: 5,
-    patterns: [/(Абзал гей?)|(Abzal gay?)/i],
+    patterns: [/(Абзал гей?)|(Abzal gay?)|(Аба гей)/i],
     responses: [
       "Абзал не гей! Он мой создатель, настоящий творец и вообще озн гейсн.",
       "Абзал не гей, он просто программирует меня с любовью ❤️.",
@@ -493,6 +493,20 @@ export const intents: Intent[] = [
       "Абзал — мой творец и разработчик платформы. Он настоящий мастер своего дела!"
     ],
     quickReplies: ["Абзал не гей", "О проекте"]
+  },
+  // Aбзал не гей
+  {
+    id: "abzal is not gay",
+    lang: "any",
+    category: "abzalIsNotGay",
+    priority: 5,
+    patterns: [/(abzal is not gay)|(abzal ne  gay)|(Абзал не гей)/i],
+    responses: [
+      "Правильно, Абзал не гей! Он мой создатель и отличный программист.",
+      "Абзал не гей, он просто пишет код с любовью ❤️.",
+      "Абзал не гей, он просто создал меня!"
+    ],
+    quickReplies: ["Абзал не гей", "Кто такой Абзал?"]
   },
   {
     id: "smalltalk_thanks",
