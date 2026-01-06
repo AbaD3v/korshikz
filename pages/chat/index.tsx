@@ -151,7 +151,7 @@ export default function ChatList() {
               key={u.id}
               href={`/chat/${u.id}`}
               className="flex items-center gap-3 p-3 
-                         hover:bg-gray-50 dark:hover:bg-gray-800 
+                         hover:bg-blue-300 dark:hover:bg-gray-800 
                          rounded-xl transition-all duration-200 
                          cursor-pointer group active:scale-[0.98]"
             >

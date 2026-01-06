@@ -93,7 +93,7 @@ export const makeProfileDeleteAccount = () =>
 // --- Chat ---
 export const makeChatWriteNeighbor = () =>
   makeResponse("Откройте 'Чаты' и выберите пользователя.", [
-    { label: "Чаты", href: "/chats" },
+    { label: "Чаты", href: "/chat" },
   ], "chat_write_neighbor", 0.9, ["Чаты", "Написать"]);
 
 export const makeChatCreateGroup = () =>
