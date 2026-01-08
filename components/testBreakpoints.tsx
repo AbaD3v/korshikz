@@ -5,7 +5,7 @@ export default function TestBreakpoints() {
   return (
     <div className="p-4 space-y-4">
       {/* Mobile only (<768px) */}
-      <div className="md:hidden bg-red-400 text-black p-3 rounded">
+      <div className="md:hidden bg-red-400 text-black    p-3 rounded">
         Я вижу бургер (mobile)
       </div>
 
