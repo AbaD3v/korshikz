@@ -1,10 +1,24 @@
-// pages/index.js
 import Link from "next/link";
 import { motion } from "framer-motion";
+import Head from "next/head"; // Добавили импорт для SEO
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-900 text-gray-900 dark:text-gray-100">
+      {/* SEO Section */}
+      <Head>
+        <title>Korshi.kz — Поиск жилья и соседей в Казахстане 🏡</title>
+        <meta 
+          name="description" 
+          content="Korshi.kz поможет найти комнату, квартиру или идеального соседа. Удобный поиск жилья в Алматы, Астане и других городах Казахстана." 
+        />
+        <meta name="keywords" content="корши, korshi, korshikz, поиск соседа, снять квартиру казахстан, аренда жилья алматы, астана" />
+        <meta property="og:title" content="Korshi.kz — жильё и соседи по душе" />
+        <meta property="og:description" content="Найди комнату или соседа за пару минут. Просто, быстро и бесплатно." />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://korshikz.space" />
+      </Head>
+
       {/* Hero Section */}
       <section className="flex flex-col items-center justify-center text-center py-24 px-6">
         <motion.h1
@@ -48,7 +62,7 @@ export default function Home() {
       </section>
 
       {/* Search Section */}
-  <section className="bg-white dark:bg-gray-800 py-16 px-6 shadow-inner">
+      <section className="bg-white dark:bg-gray-800 py-16 px-6 shadow-inner">
         <motion.div
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}

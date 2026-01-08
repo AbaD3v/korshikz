@@ -35,9 +35,9 @@ export default async function handler(req, res) {
 
     // 3. Отправляем письмо через верифицированный домен Resend
     const { error: mailError } = await resend.emails.send({
-      from: 'Korshi <welcome@korshikz.space>',
+      from: 'Korshi.kz <welcome@korshikz.space>',
       to: email,
-      subject: 'Подтверждение регистрации Korshi',
+      subject: 'Подтверждение регистрации на Korshi.kz',
             html: `
 <!DOCTYPE html>
 <html>
@@ -104,11 +104,11 @@ export default async function handler(req, res) {
 </head>
 <body>
   <div class="container">
-    <a href="https://korshikz.space" class="logo">Korshi</a>
+    <a href="https://korshikz.space" class="logo">Korshi.kz</a>
     
     <div class="card">
       <h1>Подтвердите ваш email</h1>
-      <p>Рады видеть вас в Korshi! Чтобы активировать ваш аккаунт и начать пользоваться сервисом, нажмите на кнопку ниже.</p>
+      <p>Рады видеть вас в Korshi.kz! Чтобы активировать ваш аккаунт и начать пользоваться сервисом, нажмите на кнопку ниже.</p>
       
       <a href="${confirmationUrl}" class="button">Подтвердить аккаунт</a>
       
