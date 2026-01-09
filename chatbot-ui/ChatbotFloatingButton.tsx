@@ -1,17 +1,19 @@
 "use client";
 
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, Variants } from "framer-motion";
 import ChatbotWidgetStyled from "./ChatbotWidgetStyled";
-import { ChatbotContext } from "./ChatbotProvider";
+import { useChatbot } from "./ChatbotProvider"; // Используем хук вместо useContext
 import { X, MessageCircle, ChevronDown } from "lucide-react";
 
 const MotionDiv = motion.div as any;
 const MotionButton = motion.button as any;
 
 export default function ChatbotFloatingButton() {
-  const ctx = useContext(ChatbotContext);
+  // 1. Безопасно получаем контекст через хук
+  const chatbot = useChatbot(); 
+  
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -23,9 +25,10 @@ export default function ChatbotFloatingButton() {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; startRight: number; startBottom: number } | null>(null);
 
-  const avatarUrl = (ctx as any)?.botAvatarUrl;
-  const botName = (ctx as any)?.botName ?? "AI Assistant";
-  const botSubtitle = (ctx as any)?.botSubtitle ?? "Всегда на связи";
+  // Достаем доп. данные, если они есть в контексте, или ставим дефолты
+  const avatarUrl = (chatbot as any)?.botAvatarUrl;
+  const botName = (chatbot as any)?.botName ?? "AI Assistant";
+  const botSubtitle = (chatbot as any)?.botSubtitle ?? "Всегда на связи";
 
   useEffect(() => {
     setMounted(true);
@@ -72,6 +75,7 @@ export default function ChatbotFloatingButton() {
     exit: { opacity: 0, y: 20, scale: 0.95 }
   };
 
+  // Важно для Next.js SSR
   if (!mounted) return null;
 
   const widget = (
@@ -86,7 +90,7 @@ export default function ChatbotFloatingButton() {
           variants={widgetVariants}
           drag={isMobile ? "y" : false}
           dragConstraints={{ top: 0, bottom: 0 }}
-          onDragEnd={(e, info) => {
+          onDragEnd={(_: any, info: any) => {
             if (isMobile && info.offset.y > 100) setOpen(false);
           }}
           className="shadow-[0_20px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden backdrop-blur-xl border border-white/40 dark:border-slate-700/50"
@@ -113,12 +117,12 @@ export default function ChatbotFloatingButton() {
               </div>
               <div className="flex-1 min-w-0 text-left">
                 <div className="font-bold truncate text-[16px]">{botName}</div>
-                <div className="text-[12px] text-white/80 truncate">{botSubtitle}</div>
+                <div className="text-[12px] text-gray-500 dark:text-white/80 truncate">{botSubtitle}</div>
               </div>
               <button
                 aria-label="Закрыть чат"
                 onClick={() => setOpen(false)}
-                className="p-2 hover:bg-white/10 active:bg-white/20 rounded-xl transition-all duration-200 text-black dark:text-white"
+                className="p-2 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 rounded-xl transition-all duration-200 text-black dark:text-white"
               >
                 <X size={20} />
               </button>
@@ -127,6 +131,7 @@ export default function ChatbotFloatingButton() {
 
           {/* Chat body */}
           <div className="flex-1 relative bg-white/2 dark:bg-black/2 overflow-hidden backdrop-blur-md">
+            {/* Прокидываем данные из контекста в виджет */}
             <ChatbotWidgetStyled height="100%" />
           </div>
         </MotionDiv>

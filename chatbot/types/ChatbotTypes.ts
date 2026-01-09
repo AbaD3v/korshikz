@@ -1,4 +1,3 @@
-// /chatbot/types/ChatbotTypes.ts
 /**
  * Общие типы для чат-бота
  */
@@ -19,16 +18,34 @@ export type BotResponse = {
   links?: Link[];
   quickReplies?: string[];
 };
-
-/** Интерфейс провайдера ответов */
+/** Intent (интент / шаблон) */
+export type Intent = {
+  id: string;                // уникальный идентификатор интента
+  lang: "ru" | "kz" | "any"; // язык
+  category: string;           // категория: search, greeting, profile, support, etc.
+  priority?: number;          // опциональный приоритет
+  patterns: RegExp[];         // regex-паттерны для route
+  synonyms?: string[];        // ключевые слова для NLP
+  responses?: string[];       // fallback/шаблонные ответы
+  responseStrategy?: "static" | "dynamic"; // static = шаблон, dynamic = LLM
+  links?: { label: string; href: string }[];
+  quickReplies?: string[];
+};
+/** Интерфейс провайдера ответов (ядро) */
 export type ResponseProvider = {
   /** Возвращает полный ответ с метаданными */
-  getResponse: (prompt: string, opts?: any) => Promise<BotResponse | string>;
+  getResponse: (prompt: string, opts?: any) => Promise<BotResponse>;
   /** Опционально: асинхронный генератор чанков текста для incremental output */
   stream?: (prompt: string, opts?: any) => AsyncGenerator<string, void, void>;
 };
 
-/** Сообщение в диалоге (используется в UI и в ядре) */
+/** Интерфейс стримингового провайдера (UI/AI) */
+export type StreamingProvider = {
+  send?: (prompt: string, opts?: any) => Promise<BotResponse>;
+  stream?: (prompt: string, opts?: any) => AsyncGenerator<string, void, void>;
+};
+
+/** Сообщение в диалоге */
 export type ChatMessage = {
   id: string;
   role: "user" | "ai" | "system" | "bot";
@@ -41,26 +58,18 @@ export type ChatMessage = {
   partial?: boolean;
 };
 
-/**
- * Порт для хранения контекста (контекстный стор).
- * Реализация может быть in-memory, localStorage, IndexedDB, серверный и т.д.
- */
+/** Контекстный стор */
 export interface ContextStorePort {
-  /** Получить контекст по ключу */
   get: (key: string) => Promise<Record<string, unknown> | null>;
-  /** Сохранить контекст по ключу */
   set: (key: string, value: Record<string, unknown>) => Promise<void>;
-  /** Удалить контекст по ключу */
   delete: (key: string) => Promise<void>;
-  /** Получить все контексты (опционально) */
   getAll?: () => Promise<Record<string, Record<string, unknown>>>;
-  /** Очистить все контексты (опционально) */
   clear?: () => Promise<void>;
 }
 
 /** Конфигурация чат-ядра */
 export interface ChatbotConfig {
-  provider?: ResponseProvider;
+  provider: ResponseProvider;
   contextStore?: ContextStorePort;
   locale?: "ru" | "kz" | string;
   initialMessages?: ChatMessage[];

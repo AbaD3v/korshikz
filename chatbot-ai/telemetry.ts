@@ -23,7 +23,12 @@ function saveEvent(event: TelemetryEvent) {
     // игнорируем, если localStorage недоступен
   }
 }
-
+export type RouteTelemetryEvent = {
+  prompt: string;
+  intent: string;
+  confidence: number;
+  decision?: "template" | "client_llm" | "fallback";
+};
 /**
  * Логируем успешный роутинг интента
  */
@@ -31,6 +36,7 @@ export function logRouteTelemetry(data: {
   prompt: string;
   intent: string;
   confidence: number;
+  decision?: "template" | "client_llm" | "fallback";
 }) {
   const event: TelemetryEvent = {
     type: "route",

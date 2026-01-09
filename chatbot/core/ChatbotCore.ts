@@ -1,49 +1,28 @@
-// /chatbot/core/ChatbotCore.ts
-import type { ChatMessage, ResponseProvider, ContextStorePort, BotResponse } from "../types/ChatbotTypes";
-import { makeFallback } from "../../chatbot-ai/responseTemplates";
-
-interface CoreOptions {
-  provider: ResponseProvider;
-  contextStore?: ContextStorePort;
-}
-
-type Listener = (msg: ChatMessage) => void;
-type ErrorListener = (err: Error) => void;
-
-const CONFIDENCE_THRESHOLD = 0.45;
+import type {
+  ChatMessage,
+  ResponseProvider,
+  BotResponse,
+  ChatbotConfig,
+} from "../types/ChatbotTypes";
 
 export class ChatbotCore {
+  private provider: ResponseProvider;
   private messages: ChatMessage[] = [];
-  private listeners: Listener[] = [];
-  private errorListeners: ErrorListener[] = [];
+  private onMessageCb?: (msg: ChatMessage) => void;
+  private enableStreaming: boolean;
 
-  constructor(private opts: CoreOptions) {
-    if (opts.contextStore && typeof opts.contextStore.getAll === "function") {
-      (async () => {
-        try {
-          const all = await opts.contextStore!.getAll!();
-          if (all && typeof all === "object") {
-            const loaded: ChatMessage[] = Object.values(all).map((v) => {
-              const msg = v as unknown as ChatMessage;
-              return {
-                id: msg.id ?? crypto.randomUUID(),
-                role: msg.role ?? "system",
-                text: msg.text ?? "",
-                timestamp: msg.timestamp ?? Date.now(),
-                intent: msg.intent,
-                confidence: msg.confidence,
-                links: msg.links,
-                quickReplies: msg.quickReplies,
-                partial: msg.partial,
-              };
-            });
-            this.messages = loaded;
-          }
-        } catch {
-          // ignore load errors
-        }
-      })();
+  constructor(config: ChatbotConfig) {
+    this.provider = config.provider;
+    this.onMessageCb = config.onMessage;
+    this.enableStreaming = config.enableStreaming ?? true;
+
+    if (config.initialMessages) {
+      this.messages = [...config.initialMessages];
     }
+  }
+
+  onMessage(cb: (msg: ChatMessage) => void) {
+    this.onMessageCb = cb;
   }
 
   async sendMessage(text: string) {
@@ -53,86 +32,80 @@ export class ChatbotCore {
       text,
       timestamp: Date.now(),
     };
-    this.addMessage(userMsg);
+    this.pushMessage(userMsg);
 
-    try {
-      const resp = await this.opts.provider.getResponse(text, this.messages);
+    if (this.enableStreaming && this.provider.stream) {
+      const partialId = crypto.randomUUID();
+      let accumulated = "";
 
-      // Normalize to BotResponse
-      const normalized: BotResponse = typeof resp === "string" ? { text: resp, confidence: 1 } : resp;
+      const partialMsg: ChatMessage = {
+        id: partialId,
+        role: "ai",
+        text: "",
+        timestamp: Date.now(),
+        partial: true,
+      };
+      this.pushMessage(partialMsg);
 
-      const confidence = typeof normalized.confidence === "number" ? normalized.confidence : 0.5;
-
-      // Default final values from provider
-      let finalText = normalized.text;
-      let finalIntent = normalized.intent;
-      let finalLinks = normalized.links;
-      let finalQuickReplies = normalized.quickReplies;
-      let finalConfidence = confidence;
-
-      if (confidence < CONFIDENCE_THRESHOLD) {
-        // Log low-confidence case for analysis (localStorage fallback for dev)
-        try {
-          const key = "bot_low_confidence_log";
-          const prev = JSON.parse(localStorage.getItem(key) || "[]");
-          prev.push({ ts: Date.now(), input: text, resp: normalized });
-          localStorage.setItem(key, JSON.stringify(prev.slice(-1000)));
-        } catch {
-          // ignore storage errors
+      try {
+        const stream = this.provider.stream(text);
+        for await (const chunk of stream) {
+          accumulated += chunk;
+          this.updateMessage(partialId, { text: accumulated, partial: true });
         }
 
-        console.warn("Low confidence response detected", { input: text, confidence, normalized });
-
-        // используем makeFallback вместо chooseFallback
-        const fb = makeFallback();
-        finalText = fb.text;
-        finalIntent = fb.intent ?? "fallback";
-        finalLinks = fb.links ?? [];
-        finalQuickReplies = fb.quickReplies ?? ["Переформулировать", "Показать похожие темы", "Связаться с поддержкой"];
-        finalConfidence = 0;
+        // Финализируем сообщение без повторного запроса к провайдеру
+        this.updateMessage(partialId, {
+          text: accumulated.trim(),
+          partial: false,
+          timestamp: Date.now(),
+        });
+      } catch (err) {
+        console.error("ChatbotCore Stream Error:", err);
+        this.updateMessage(partialId, {
+          text: "Произошла ошибка при генерации ответа.",
+          partial: false,
+        });
       }
-
-      const botMsg: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "ai",
-        text: finalText,
-        timestamp: Date.now(),
-        intent: finalIntent,
-        confidence: finalConfidence,
-        links: finalLinks,
-        quickReplies: finalQuickReplies,
-      };
-
-      if (!this.messages.some((m) => m.role === "ai" && m.text === botMsg.text)) {
-        this.addMessage(botMsg);
+    } else {
+      try {
+        const resp: BotResponse = await this.provider.getResponse(text);
+        this.pushMessage({
+          id: crypto.randomUUID(),
+          role: "ai",
+          text: resp.text,
+          timestamp: Date.now(),
+          intent: resp.intent,
+          confidence: resp.confidence,
+          links: resp.links,
+          quickReplies: resp.quickReplies,
+          partial: false,
+        });
+      } catch {
+        this.pushMessage({
+          id: crypto.randomUUID(),
+          role: "ai",
+          text: "Ошибка связи с ботом.",
+          timestamp: Date.now(),
+        });
       }
-    } catch (err) {
-      this.errorListeners.forEach((cb) => cb(err as Error));
     }
   }
 
-  onMessage(cb: Listener) {
-    this.listeners.push(cb);
+  private pushMessage(msg: ChatMessage) {
+    this.messages.push(msg);
+    this.onMessageCb?.(msg);
   }
 
-  onError(cb: ErrorListener) {
-    this.errorListeners.push(cb);
+  private updateMessage(id: string, patch: Partial<ChatMessage>) {
+    this.messages = this.messages.map((m) =>
+      m.id === id ? { ...m, ...patch } : m
+    );
+    const updated = this.messages.find((m) => m.id === id);
+    if (updated) this.onMessageCb?.(updated);
   }
 
   getMessages() {
-    return [...this.messages];
-  }
-
-  private addMessage(msg: ChatMessage) {
-    try {
-      if (this.opts.contextStore && typeof this.opts.contextStore.set === "function") {
-        void this.opts.contextStore.set(msg.id, msg as unknown as Record<string, unknown>);
-      }
-    } catch {
-      // ignore storage errors
-    }
-
-    this.messages.push(msg);
-    this.listeners.forEach((l) => l(msg));
+    return this.messages;
   }
 }

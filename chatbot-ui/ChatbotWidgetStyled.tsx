@@ -1,3 +1,4 @@
+// /chatbot-ui/ChatbotWidgetStyled.tsx
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
@@ -66,9 +67,11 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
       >
         {messages.map((m: Message, idx: number) => {
           const isUser = m.role === "user";
+          const isPartial = m.partial;
+
           return (
             <MotionDiv
-              key={m.id || idx}
+              key={m.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className={`flex ${isUser ? "justify-end" : "justify-start"}`}
@@ -76,18 +79,50 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
               <div
                 className={`max-w-[85%] px-4 py-2 rounded-2xl ${
                   isUser
-                    ? "bg-green-400 dark:bg-white/5 border border-blue-600 dark:border-slate-700 text-white shadow-md"
-                    : "bg-indigo-600 border border-white/20 dark:border-slate-700 text-slate-900 dark:text-slate-100 shadow-sm"
+                    ? "bg-green-400 dark:bg-white/5 border border-white/20 dark:border-green-700 text-white shadow-md"
+                    : isPartial
+                    ? "bg-white/5  backdrop-blur-md text-slate-900 border border-indigo-600 dark:border-white dark:text-slate-100 animate-pulse shadow-md"
+                    : "bg-indigo-600 border border-white/20 dark:border-slate-700 text-white/90 dark:text-black shadow-sm"
                 }`}
               >
-                <div className="text-[14px] leading-relaxed whitespace-pre-wrap">{m.text}</div>
+                <div className="text-[14px] leading-relaxed whitespace-pre-wrap">
+                  {m.text}
+                  {isPartial && (
+                    // добавляем менее видный текст "Может занять пару десятков секунд"
+                    <span className="ml-2 text-xs italic opacity-70">Думает…от 10 секунд</span>
+                  )}
+                </div>
               </div>
             </MotionDiv>
           );
         })}
-        {isStreaming && (
-          <div className="text-sm text-slate-500 dark:text-slate-400 animate-pulse">AI печатает…</div>
-        )}
+
+        {/* Индикатор стриминга */}
+{isStreaming && !messages.some((m) => m.role === "ai" && m.partial) && (
+  <div className="flex items-center gap-1 text-sm text-slate-500 dark:text-slate-400">
+    <span>AI печатает</span>
+    <motion.span
+      animate={{ y: [0, -3, 0] }}
+      transition={{ repeat: Infinity, duration: 0.6 }}
+    >
+      .
+    </motion.span>
+    <motion.span
+      animate={{ y: [0, -3, 0] }}
+      transition={{ repeat: Infinity, duration: 0.6, delay: 0.2 }}
+    >
+      .
+    </motion.span>
+    <motion.span
+      animate={{ y: [0, -3, 0] }}
+      transition={{ repeat: Infinity, duration: 0.6, delay: 0.4 }}
+    >
+      .
+    </motion.span>
+  </div>
+)}
+
+
         <div ref={bottomRef} className="h-2 w-full shrink-0" />
       </div>
 
@@ -128,19 +163,18 @@ export default function ChatbotWidgetStyled({ height }: { height?: string }) {
             rows={1}
           />
           <MotionButton
-  type="submit"
-  whileHover={{ scale: 1.05 }}
-  whileTap={{ scale: 0.95 }}
-  className="w-11 h-11 rounded-full flex items-center justify-center 
-             bg-gradient-to-r from-indigo-500 to-purple-600 
-             text-white shadow-lg backdrop-blur-md 
-             transition-all duration-200"
->
-  <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-    <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
-  </svg>
-</MotionButton>
-
+            type="submit"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="w-11 h-11 rounded-full flex items-center justify-center 
+                       bg-gradient-to-r from-indigo-500 to-purple-600 
+                       text-white shadow-lg backdrop-blur-md 
+                       transition-all duration-200"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+              <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+            </svg>
+          </MotionButton>
         </form>
       </div>
 

@@ -1,4 +1,5 @@
 // /chatbot-ai/nlp.ts
+import { intents, Intent } from "./intents";
 
 /**
  * Простая функция для оценки совпадений по синонимам.
@@ -25,6 +26,32 @@ export function keywordsScore(input: string, synonyms: string[]): number {
  */
 export function pickResponse(responses: string[]): string {
   if (!responses || responses.length === 0) return "";
-  // пока берём первый, но можно сделать случайный выбор
-  return responses[0];
+  return responses[Math.floor(Math.random() * responses.length)];
+}
+
+/**
+ * Основная функция: ищет интент по тексту.
+ * Использует RegExp patterns и оценку по synonyms.
+ */
+export function matchIntent(input: string): Intent | null {
+  let bestIntent: Intent | null = null;
+  let bestScore = 0;
+
+  for (const intent of intents) {
+    // 1. Проверка по регуляркам
+    if (intent.patterns.some(p => p.test(input))) {
+      return intent; // прямое совпадение — сразу возвращаем
+    }
+
+    // 2. Проверка по синонимам
+    if (intent.synonyms && intent.synonyms.length > 0) {
+      const score = keywordsScore(input, intent.synonyms);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIntent = intent;
+      }
+    }
+  }
+
+  return bestIntent;
 }
