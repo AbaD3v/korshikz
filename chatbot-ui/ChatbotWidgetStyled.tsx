@@ -241,7 +241,7 @@ export default function ChatbotWidgetStyled({ height, mode = "smart" }: ChatbotW
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
             }}
             placeholder={mode === "pro" ? "Спросите что угодно (Pro)..." : "Спросите AI..."}
-            className="flex-1 bg-transparent   border-none focus:ring-0 resize-none py-2 px-3 text-[14px] text-gray-200 dark:text-slate-100 placeholder:text-slate-300"
+            className="flex-1 bg-transparent   border-none focus:ring-0 resize-none py-2 px-3 text-[14px] text-black dark:text-slate-100 placeholder:text-slate-300"
             rows={1}
           />
           <MotionButton
