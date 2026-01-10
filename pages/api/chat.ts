@@ -1,35 +1,44 @@
-import type { NextApiRequest, NextApiResponse } from "next";
+// pages/api/chat.ts
+import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method not allowed' });
   }
 
+  const { messages } = req.body;
+  const GROQ_API_KEY = process.env.GROQ_API_KEY; // Ключ берем из переменных окружения
+
   try {
-    const { prompt } = req.body;
-    if (!prompt || typeof prompt !== "string") {
-      return res.status(400).json({ error: "Missing or invalid prompt" });
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: messages,
+        temperature: 0.7,
+        stream: true,
+      }),
+    });
+
+    // Настраиваем заголовки для стриминга
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const reader = response.body?.getReader();
+    if (!reader) return res.status(500).end();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value); // Передаем чанки данных напрямую клиенту
     }
-
-    const hfRes = await fetch(
-      "https://hf.space/embed/AbaD3v/korshikz-chatbot/api/predict",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: [prompt] }),
-      }
-    );
-
-    if (!hfRes.ok) {
-      const text = await hfRes.text();
-      console.error("HF error:", text);
-      return res.status(500).json({ error: "HF Space request failed", details: text });
-    }
-
-    const data = await hfRes.json();
-    return res.status(200).json(data);
-  } catch (err: any) {
-    console.error("API /chat error:", err);
-    return res.status(500).json({ error: "Internal server error", details: err.message });
+    res.end();
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch Groq' });
   }
 }

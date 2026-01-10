@@ -2,17 +2,15 @@
 import intents, { Intent } from "./intents";
 import { keywordsScore } from "./nlp";
 import { setState } from "./dialogState";
-import { createClientLLMBot } from "./createClientLLMBot";
+import { createGroqbot } from "./createGroqbot";
 import type { BotResponse, StreamingProvider } from "../chatbot/types/ChatbotTypes";
 
-// Инициализируем LLM здесь (она будет синглтоном внутри этого модуля)
-const llm = createClientLLMBot();
+const llm = createGroqbot();
 
 export type RouteResult =
   | { type: "intent"; intent: Intent; confidence: number; }
   | { type: "fallback"; };
 
-// Твоя оригинальная логика маршрутизации
 export function route(input: string): RouteResult {
   const normalized = input.trim().toLowerCase();
 
@@ -47,29 +45,45 @@ export function route(input: string): RouteResult {
   return { type: "fallback" };
 }
 
-// ТОТ САМЫЙ ЭКСПОРТ, КОТОРОГО НЕ ХВАТАЛО
 export const smartStreamingRouter: StreamingProvider = {
-  async* stream(text: string) {
+  async* stream(text: string, history: any[] = []) {
     const result = route(text);
 
-    // Если нашли интент и он статический — возвращаем случайную фразу из списка
-    if (result.type === "intent" && result.intent.responseStrategy !== "dynamic") {
+    // Условие для игнорирования статики: если ввод короткий (1-2 слова) 
+    // и это явно продолжение беседы (есть история).
+    const isShortInput = text.trim().split(/\s+/).length <= 2;
+    const hasHistory = history && history.length > 0;
+
+    // Если нашли интент, он статический И это НЕ короткая дописка в существующий диалог
+    if (
+      result.type === "intent" && 
+      result.intent.responseStrategy !== "dynamic" &&
+      !(hasHistory && isShortInput) 
+    ) {
       const responses = result.intent.responses || [];
       yield responses[Math.floor(Math.random() * responses.length)] || "Секунду...";
       return;
     }
 
-    // Если это fallback или динамический интент — используем LLM
-    const llmStream = llm.stream(text);
+    // Во всех остальных случаях используем LLM (Groq)
+    const llmStream = llm.stream(text, history);
     for await (const chunk of llmStream) {
       yield chunk;
     }
   },
 
-  async send(text: string): Promise<BotResponse> {
+  async send(text: string, history: any[] = []): Promise<BotResponse> {
     const result = route(text);
+    const isShortInput = text.trim().split(/\s+/).length <= 2;
+    const hasHistory = history && history.length > 0;
 
-    if (result.type === "intent" && result.intent.responseStrategy !== "dynamic") {
+    // Проверяем, нужно ли отдавать статический ответ
+    const shouldReturnStatic = 
+      result.type === "intent" && 
+      result.intent.responseStrategy !== "dynamic" &&
+      !(hasHistory && isShortInput);
+
+    if (shouldReturnStatic && result.type === "intent") {
       const responses = result.intent.responses || [];
       return {
         text: responses[Math.floor(Math.random() * responses.length)] || "",
@@ -80,13 +94,24 @@ export const smartStreamingRouter: StreamingProvider = {
       };
     }
 
-    // Обращение к LLM
-    const response = await llm.send(text);
+    // Если мы здесь — значит работает LLM
+    const response = await llm.send(text, history);
+
+    // СКЛЕЙКА: Если LLM ответила, но мы при этом распознали интент (например "Астана")
+    // мы берем текст у LLM, но добавляем кнопки и ссылки из интента
+    if (result.type === "intent") {
+      return {
+        ...response,
+        intent: result.intent.id,
+        quickReplies: result.intent.quickReplies || [],
+        links: result.intent.links || [],
+      };
+    }
+
+    // Полный fallback
     return {
       ...response,
-      intent: result.type === "intent" ? result.intent.id : "llm_fallback",
-      quickReplies: result.type === "intent" ? result.intent.quickReplies : [],
-      links: result.type === "intent" ? result.intent.links : [],
+      intent: "llm_fallback",
     };
   }
 };

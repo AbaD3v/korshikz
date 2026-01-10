@@ -1,3 +1,4 @@
+// /chatbot/core/ChatbotCore.ts
 import type {
   ChatMessage,
   ResponseProvider,
@@ -26,12 +27,18 @@ export class ChatbotCore {
   }
 
   async sendMessage(text: string) {
+    // 1. Создаем сообщение пользователя
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
       text,
       timestamp: Date.now(),
     };
+
+    // 2. Сохраняем ТЕКУЩУЮ историю для передачи в LLM как контекст
+    const historyContext = [...this.messages];
+
+    // 3. Добавляем сообщение пользователя в локальный стейт
     this.pushMessage(userMsg);
 
     if (this.enableStreaming && this.provider.stream) {
@@ -48,13 +55,14 @@ export class ChatbotCore {
       this.pushMessage(partialMsg);
 
       try {
-        const stream = this.provider.stream(text);
+        // Передаем текст И историю сообщений
+        const stream = this.provider.stream(text, historyContext);
         for await (const chunk of stream) {
           accumulated += chunk;
           this.updateMessage(partialId, { text: accumulated, partial: true });
         }
 
-        // Финализируем сообщение без повторного запроса к провайдеру
+        // Финализируем
         this.updateMessage(partialId, {
           text: accumulated.trim(),
           partial: false,
@@ -69,7 +77,8 @@ export class ChatbotCore {
       }
     } else {
       try {
-        const resp: BotResponse = await this.provider.getResponse(text);
+        // Обычный запрос (не стриминг) тоже с контекстом
+        const resp: BotResponse = await this.provider.getResponse(text, historyContext);
         this.pushMessage({
           id: crypto.randomUUID(),
           role: "ai",

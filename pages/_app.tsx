@@ -25,8 +25,6 @@ export default function App({ Component, pageProps }: AppProps) {
       storageKey="korshi-chat"
       streamingProvider={createKorshiBot()}
     >
-      <ChatbotBootstrap />
-
       <div
         className={
           theme === "dark"

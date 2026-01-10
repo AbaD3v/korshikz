@@ -1,3 +1,4 @@
+// /chatbot-ui/ChatbotProvider.tsx
 "use client";
 
 import React, {
@@ -20,8 +21,6 @@ import { ChatbotCore } from "../chatbot/core/ChatbotCore";
 import { ONBOARDING_PROMPT } from "../chatbot-ai/prompts";
 import { setState } from "../chatbot-ai/dialogState";
 
-// -----------------------------
-// Types
 export type Message = ChatMessage;
 
 export type ChatbotContextType = {
@@ -30,26 +29,22 @@ export type ChatbotContextType = {
   isStreaming: boolean;
 };
 
-// 1. Создаем контекст
 export const ChatbotContext = createContext<ChatbotContextType | undefined>(undefined);
 
-// 2. Экспортируем хук для безопасного доступа
 export const useChatbot = (): ChatbotContextType => {
   const ctx = useContext(ChatbotContext);
-  if (!ctx) {
-    // Эта ошибка поможет тебе понять, если компонент оказался вне провайдера
-    throw new Error("useChatbot must be used within ChatbotProvider");
-  }
+  if (!ctx) throw new Error("useChatbot must be used within ChatbotProvider");
   return ctx;
 };
 
-// Адаптер
+// Исправленный адаптер: теперь прокидывает opts (историю)
 function wrapStreamingProvider(sp: StreamingProvider): ResponseProvider {
   return {
-    async getResponse(prompt: string): Promise<BotResponse> {
-      if (sp.send) return await sp.send(prompt);
+    async getResponse(prompt: string, opts?: any): Promise<BotResponse> {
+      if (sp.send) return await sp.send(prompt, opts);
       return { text: "", intent: "empty", confidence: 0 };
     },
+    // Прокидываем stream как есть, он уже поддерживает (prompt, opts)
     stream: sp.stream,
   };
 }
@@ -57,7 +52,7 @@ function wrapStreamingProvider(sp: StreamingProvider): ResponseProvider {
 interface ChatbotProviderProps {
   children: React.ReactNode;
   storageKey?: string;
-  streamingProvider: StreamingProvider; // Теперь обязательно передаем из _app.tsx
+  streamingProvider: StreamingProvider;
 }
 
 export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({ 
@@ -74,7 +69,10 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     if (coreRef.current) return;
 
     const provider = wrapStreamingProvider(streamingProvider);
-    coreRef.current = new ChatbotCore({ provider });
+    coreRef.current = new ChatbotCore({ 
+      provider,
+      initialMessages: messages.length > 0 ? messages : undefined 
+    });
 
     coreRef.current.onMessage((msg) => {
       setMessages((prev) => {
@@ -86,26 +84,28 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     });
   }, [streamingProvider]);
 
-  // История (Load)
-  useEffect(() => {
-    if (!storageKey) return;
-    const raw = localStorage.getItem(storageKey);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) setMessages(parsed);
-      } catch (e) { console.error(e); }
-    }
-  }, [storageKey]);
-
-  // История (Save)
+  // Sync LocalStorage
   useEffect(() => {
     if (storageKey && messages.length > 0) {
       localStorage.setItem(storageKey, JSON.stringify(messages));
     }
   }, [messages, storageKey]);
 
-  // Onboarding
+  // Загрузка истории при старте
+  useEffect(() => {
+    if (!storageKey) return;
+    const raw = localStorage.getItem(storageKey);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && messages.length === 0) {
+          setMessages(parsed);
+        }
+      } catch (e) { console.error(e); }
+    }
+  }, []);
+
+  // Onboarding (только если чат пустой)
   useEffect(() => {
     if (messages.length > 0) return;
     const onboardingMsg: Message = {
@@ -117,7 +117,7 @@ export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({
     };
     setMessages([onboardingMsg]);
     setState("onboarding");
-  }, [messages]);
+  }, [messages.length]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!coreRef.current || !text.trim() || isStreaming) return;
