@@ -708,7 +708,7 @@ export const intents: Intent[] = [
       "Выберите диапазон цен в фильтрах."
     ],
     quickReplies: ["Фильтр по цене", "Указать бюджет"],
-    responseStrategy: "static"
+    responseStrategy: "dynamic"
   },
   {
     id: "search_district",

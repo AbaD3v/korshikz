@@ -4,31 +4,28 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, Variants } from "framer-motion";
 import ChatbotWidgetStyled from "./ChatbotWidgetStyled";
-import { useChatbot } from "./ChatbotProvider"; // Используем хук вместо useContext
-import { X, MessageCircle, ChevronDown } from "lucide-react";
+import { useChatbot } from "./ChatbotProvider";
+import { X, MessageCircle, ChevronDown, Sparkles, Zap } from "lucide-react";
+import type { ChatMode } from "../chatbot-ai/router";
 
 const MotionDiv = motion.div as any;
 const MotionButton = motion.button as any;
 
 export default function ChatbotFloatingButton() {
-  // 1. Безопасно получаем контекст через хук
   const chatbot = useChatbot(); 
   
   const [open, setOpen] = useState(false);
-  const [unread, setUnread] = useState(0);
   const [mounted, setMounted] = useState(false);
+  const [mode, setMode] = useState<ChatMode>("smart"); // Состояние режима
   const [pos, setPos] = useState({ right: 24, bottom: 24 });
   const [isDragging, setIsDragging] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  const containerRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; startRight: number; startBottom: number } | null>(null);
 
-  // Достаем доп. данные, если они есть в контексте, или ставим дефолты
   const avatarUrl = (chatbot as any)?.botAvatarUrl;
-  const botName = (chatbot as any)?.botName ?? "AI Assistant";
-  const botSubtitle = (chatbot as any)?.botSubtitle ?? "Всегда на связи";
+  const botName = (chatbot as any)?.botName ?? "Korshi AI";
+  const botSubtitle = (chatbot as any)?.botSubtitle ?? "Поиск недвижимости";
 
   useEffect(() => {
     setMounted(true);
@@ -75,7 +72,6 @@ export default function ChatbotFloatingButton() {
     exit: { opacity: 0, y: 20, scale: 0.95 }
   };
 
-  // Важно для Next.js SSR
   if (!mounted) return null;
 
   const widget = (
@@ -83,17 +79,11 @@ export default function ChatbotFloatingButton() {
       {open && (
         <MotionDiv
           role="dialog"
-          aria-modal="true"
           initial="hidden"
           animate="visible"
           exit="exit"
           variants={widgetVariants}
-          drag={isMobile ? "y" : false}
-          dragConstraints={{ top: 0, bottom: 0 }}
-          onDragEnd={(_: any, info: any) => {
-            if (isMobile && info.offset.y > 100) setOpen(false);
-          }}
-          className="shadow-[0_20px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden backdrop-blur-xl border border-white/40 dark:border-slate-700/50"
+          className="shadow-[0_20px_50px_rgba(0,0,0,0.2)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.4)] flex flex-col overflow-hidden backdrop-blur-xl border border-white/40 dark:border-slate-700/50"
           style={{
             position: "fixed",
             zIndex: 2147483646,
@@ -103,36 +93,66 @@ export default function ChatbotFloatingButton() {
           }}
         >
           {/* Header */}
-          <div className="relative p-5 flex items-center justify-between shrink-0 backdrop-blur-md overflow-hidden bg-white/2">
-            <div className="relative flex items-center gap-3 z-20 w-full text-black dark:text-white">
+          <div className="relative p-4 flex items-center backdrop-blur-md justify-between shrink-0 bg-white/2 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex items-center gap-3 w-full">
+              {/* Avatar */}
               <div className="relative shrink-0">
-                <div className="w-12 h-10 rounded-full overflow-hidden bg-black/20 backdrop-blur-md border border-white/20">
+                <div className="w-10 h-10 rounded-full overflow-hidden bg-white/30 dark:bg-white/5 border border-indigo-200 dark:border-indigo-800">
                   {avatarUrl ? (
                     <img src={avatarUrl} alt={botName} className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center font-bold text-sm">AI</div>
+                    <div className="w-full h-full flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-400">K</div>
                   )}
                 </div>
-                <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-400 border-2 border-white rounded-full animate-pulse" />
+                <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-white dark:border-slate-900 rounded-full" />
               </div>
-              <div className="flex-1 min-w-0 text-left">
-                <div className="font-bold truncate text-[16px]">{botName}</div>
-                <div className="text-[12px] text-gray-500 dark:text-white/80 truncate">{botSubtitle}</div>
+
+              {/* Name & Subtitle */}
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-slate-900 dark:text-white truncate text-sm leading-tight">{botName}</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{botSubtitle}</div>
               </div>
+
+              {/* MODE TOGGLE (SMART / PRO) */}
+              <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                <button
+                  onClick={() => setMode("smart")}
+                  className={`flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                    mode === "smart"
+                      ? "bg-white/70 dark:bg-white shadow-sm text-indigo-600 dark:text-indigo-400 border border-indigo-600 dark:border-indigo-600"
+                      : "text-slate-400 backdrop-blur-md dark:text-slate-500"
+                  }`}
+                >
+                  <Zap size={10} fill={mode === "smart" ? "currentColor" : "none"} />
+                  ECO
+                </button>
+                <button
+                  onClick={() => setMode("pro")}
+                  className={`flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                    mode === "pro"
+                      ? "bg-white/70 dark:bg-indigo-600 shadow-sm text-red-500 dark:text-red-800 border border-red-400 dark:border-red-700"
+                      : "text-slate-400 dark:text-slate-500"
+                  }`}
+                >
+                  <Sparkles size={10} fill={mode === "pro" ? "currentColor" : "none"} />
+                  PRO
+                </button>
+              </div>
+
+              {/* Close Button */}
               <button
-                aria-label="Закрыть чат"
                 onClick={() => setOpen(false)}
-                className="p-2 hover:bg-black/5 dark:hover:bg-white/10 active:bg-black/10 rounded-xl transition-all duration-200 text-black dark:text-white"
+                className="ml-1 p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
           </div>
 
-          {/* Chat body */}
-          <div className="flex-1 relative bg-white/2 dark:bg-black/2 overflow-hidden backdrop-blur-md">
-            {/* Прокидываем данные из контекста в виджет */}
-            <ChatbotWidgetStyled height="100%" />
+          {/* Chat Body */}
+          <div className="flex-1  backdrop-blur-md relative bg-white/2 dark:bg-slate-950/50 overflow-hidden">
+            {/* Передаем режим в виджет */}
+            <ChatbotWidgetStyled height="100%" mode={mode} />
           </div>
         </MotionDiv>
       )}
@@ -144,35 +164,32 @@ export default function ChatbotFloatingButton() {
       {createPortal(widget, document.body)}
       {createPortal(
         <MotionDiv
-          ref={containerRef}
           className="fixed z-[2147483647]"
           style={{ right: pos.right, bottom: pos.bottom }}
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
         >
           <MotionButton
-            ref={buttonRef}
-            aria-expanded={open}
-            aria-label="Открыть чат"
             onPointerDown={handlePointerDown}
             onClick={() => !isDragging && setOpen(!open)}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            animate={unread > 0 ? { scale: [1, 1.1, 1] } : {}}
-            transition={unread > 0 ? { repeat: Infinity, duration: 1.5 } : {}}
-            className="relative w-14 h-14 md:w-16 md:h-16 rounded-full shadow-lg flex items-center justify-center text-white"
+            className="w-14 h-14 md:w-16 md:h-16 rounded-full shadow-2xl flex items-center justify-center text-white overflow-hidden"
             style={{
               background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
-              border: "none",
-              cursor: "pointer"
             }}
           >
-            {open ? <ChevronDown size={30} /> : <MessageCircle size={28} fill="white" />}
-            {unread > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center">
-                {unread}
-              </span>
-            )}
+            <AnimatePresence mode="wait">
+              {open ? (
+                <motion.div key="close" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }}>
+                  <ChevronDown size={32} />
+                </motion.div>
+              ) : (
+                <motion.div key="open" initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}>
+                  <MessageCircle size={28} fill="white" />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </MotionButton>
         </MotionDiv>,
         document.body

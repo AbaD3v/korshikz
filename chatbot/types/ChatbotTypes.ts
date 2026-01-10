@@ -18,6 +18,7 @@ export type BotResponse = {
   links?: Link[];
   quickReplies?: string[];
 };
+export type ChatMode = "smart" | "pro";
 /** Intent (интент / шаблон) */
 export type Intent = {
   id: string;                // уникальный идентификатор интента
@@ -33,18 +34,18 @@ export type Intent = {
 };
 /** Интерфейс провайдера ответов (ядро) */
 export type ResponseProvider = {
-  /** Возвращает полный ответ с метаданными */
-  getResponse: (prompt: string, opts?: any) => Promise<BotResponse>;
-  /** Опционально: асинхронный генератор чанков текста для incremental output */
-  stream?: (prompt: string, opts?: any) => AsyncGenerator<string, void, void>;
+  /** Возвращает полный ответ с метаданными */
+  getResponse: (prompt: string, history?: any[], mode?: ChatMode) => Promise<BotResponse>;
+  /** Опционально: асинхронный генератор чанков текста */
+  stream?: (prompt: string, history?: any[], mode?: ChatMode) => AsyncGenerator<string, void, void>;
 };
 
 /** Интерфейс стримингового провайдера (UI/AI) */
 export type StreamingProvider = {
-  send?: (prompt: string, opts?: any) => Promise<BotResponse>;
-  stream?: (prompt: string, opts?: any) => AsyncGenerator<string, void, void>;
+  // Мы явно указываем аргументы, чтобы провайдер и роутер "понимали" друг друга
+  send: (prompt: string, history?: any[], mode?: ChatMode) => Promise<BotResponse>;
+  stream: (prompt: string, history?: any[], mode?: ChatMode) => AsyncGenerator<string, void, void>;
 };
-
 /** Сообщение в диалоге */
 export type ChatMessage = {
   id: string;

@@ -5,6 +5,9 @@ import { setState } from "./dialogState";
 import { createGroqbot } from "./createGroqbot";
 import type { BotResponse, StreamingProvider } from "../chatbot/types/ChatbotTypes";
 
+// Добавим тип для режимов
+export type ChatMode = "smart" | "pro";
+
 const llm = createGroqbot();
 
 export type RouteResult =
@@ -46,15 +49,26 @@ export function route(input: string): RouteResult {
 }
 
 export const smartStreamingRouter: StreamingProvider = {
-  async* stream(text: string, history: any[] = []) {
+  /**
+   * Стриминг ответа с учетом выбранного режима
+   */
+  async* stream(text: string, history: any[] = [], mode: ChatMode = "smart") {
     const result = route(text);
 
-    // Условие для игнорирования статики: если ввод короткий (1-2 слова) 
-    // и это явно продолжение беседы (есть история).
+    // Если режим PRO — игнорируем статические ответы и сразу идем в LLM
+    if (mode === "pro") {
+      const llmStream = llm.stream(text, history);
+      for await (const chunk of llmStream) {
+        yield chunk;
+      }
+      return;
+    }
+
+    // ЛОГИКА SMART (ГИБРИД)
     const isShortInput = text.trim().split(/\s+/).length <= 2;
     const hasHistory = history && history.length > 0;
 
-    // Если нашли интент, он статический И это НЕ короткая дописка в существующий диалог
+    // Если нашли статику и это не короткое уточнение в диалоге
     if (
       result.type === "intent" && 
       result.intent.responseStrategy !== "dynamic" &&
@@ -65,20 +79,26 @@ export const smartStreamingRouter: StreamingProvider = {
       return;
     }
 
-    // Во всех остальных случаях используем LLM (Groq)
+    // Иначе LLM
     const llmStream = llm.stream(text, history);
     for await (const chunk of llmStream) {
       yield chunk;
     }
   },
 
-  async send(text: string, history: any[] = []): Promise<BotResponse> {
+  /**
+   * Получение полного ответа (для не-стриминговых компонентов)
+   */
+  async send(text: string, history: any[] = [], mode: ChatMode = "smart"): Promise<BotResponse> {
     const result = route(text);
+
+    // В режиме PRO мы НЕ возвращаем статический текст, только LLM
+    const isPro = mode === "pro";
     const isShortInput = text.trim().split(/\s+/).length <= 2;
     const hasHistory = history && history.length > 0;
 
-    // Проверяем, нужно ли отдавать статический ответ
     const shouldReturnStatic = 
+      !isPro &&
       result.type === "intent" && 
       result.intent.responseStrategy !== "dynamic" &&
       !(hasHistory && isShortInput);
@@ -94,11 +114,11 @@ export const smartStreamingRouter: StreamingProvider = {
       };
     }
 
-    // Если мы здесь — значит работает LLM
+    // Вызываем LLM (Groq)
     const response = await llm.send(text, history);
 
-    // СКЛЕЙКА: Если LLM ответила, но мы при этом распознали интент (например "Астана")
-    // мы берем текст у LLM, но добавляем кнопки и ссылки из интента
+    // "СКЛЕЙКА": Даже в PRO режиме, если мы распознали город или услугу,
+    // мы берем текст у LLM, но прикрепляем полезные кнопки/ссылки из интента.
     if (result.type === "intent") {
       return {
         ...response,
@@ -108,7 +128,6 @@ export const smartStreamingRouter: StreamingProvider = {
       };
     }
 
-    // Полный fallback
     return {
       ...response,
       intent: "llm_fallback",

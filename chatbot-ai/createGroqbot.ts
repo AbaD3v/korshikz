@@ -5,12 +5,17 @@ import type { StreamingProvider, BotResponse, ChatMessage } from "../chatbot/typ
 import { KORSHI_SYSTEM_PROMPT } from "./systemPrompt";
 
 export function createGroqbot(): StreamingProvider {
-  // Вспомогательная функция для приведения твоих типов сообщений к формату Groq
-  const formatHistory = (history: ChatMessage[]) => {
-    return history.map(msg => ({
-      role: (msg.role === "ai" || msg.role === "bot") ? "assistant" : "user",
-      content: msg.text
-    }));
+  const formatHistory = (history: any[]) => {
+    return history
+      .filter(msg => msg && (msg.text || msg.content)) // Проверка на наличие данных
+      .map(msg => ({
+        // Учитываем и 'ai', и 'bot', и 'assistant'
+        role: (msg.role === "ai" || msg.role === "bot" || msg.role === "assistant") 
+          ? "assistant" 
+          : "user",
+        // Учитываем и 'text', и 'content' (для надежности)
+        content: msg.text || msg.content || ""
+      }));
   };
 
   async function* stream(prompt: string, history: any = []) {
@@ -29,17 +34,30 @@ export function createGroqbot(): StreamingProvider {
         }),
       });
 
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Server error details:", errorData);
+        if (response.status === 429) {
+          yield "Слишком много запросов. Пожалуйста, подождите минуту.";
+        } else {
+          yield `Ошибка связи (${response.status}). Попробуйте позже.`;
+        }
+        return;
+      }
+
       const reader = response.body?.getReader();
       const decoder = new TextDecoder("utf-8");
-      if (!reader) return;
+      if (!reader) {
+        yield "Ошибка: поток данных не доступен.";
+        return;
+      }
 
       let buffer = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        buffer += chunk;
+        buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
 
@@ -56,21 +74,25 @@ export function createGroqbot(): StreamingProvider {
         }
       }
     } catch (error) {
-      console.error("Groq stream error:", error);
-      yield "Ошибка связи с ИИ.";
+      console.error("Groq stream fatal error:", error);
+      yield "Произошла сетевая ошибка. Проверьте подключение.";
     }
   }
 
   async function send(prompt: string, history: any = []): Promise<BotResponse> {
     let fullText = "";
-    for await (const chunk of stream(prompt, history)) {
-      fullText += chunk;
+    try {
+      for await (const chunk of stream(prompt, history)) {
+        fullText += chunk;
+      }
+      return { 
+        text: fullText.trim() || "Извините, я не смог сформировать ответ.", 
+        intent: "llm_generated", 
+        confidence: 1.0 
+      };
+    } catch (err) {
+      return { text: "Ошибка при получении ответа.", intent: "error", confidence: 0 };
     }
-    return { 
-      text: fullText.trim(), 
-      intent: "llm_generated", 
-      confidence: 1.0 
-    };
   }
 
   return { send, stream };

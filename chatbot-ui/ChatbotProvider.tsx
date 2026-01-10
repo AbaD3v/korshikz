@@ -1,137 +1,146 @@
-// /chatbot-ui/ChatbotProvider.tsx
 "use client";
 
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-} from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { smartStreamingRouter, ChatMode } from "../chatbot-ai/router";
+import { v4 as uuidv4 } from "uuid";
 
-import type {
-  ChatMessage,
-  ResponseProvider,
-  StreamingProvider,
-  BotResponse,
-} from "../chatbot/types/ChatbotTypes";
+// Интерфейс сообщения
+export interface Message {
+  id: string;
+  role: "user" | "ai";
+  text: string;
+  timestamp: string; 
+  partial?: boolean;
+}
 
-import { ChatbotCore } from "../chatbot/core/ChatbotCore";
-import { ONBOARDING_PROMPT } from "../chatbot-ai/prompts";
-import { setState } from "../chatbot-ai/dialogState";
-
-export type Message = ChatMessage;
-
-export type ChatbotContextType = {
+export interface ChatbotContextType {
   messages: Message[];
-  sendMessage: (text: string) => Promise<void>;
   isStreaming: boolean;
-};
-
-export const ChatbotContext = createContext<ChatbotContextType | undefined>(undefined);
-
-export const useChatbot = (): ChatbotContextType => {
-  const ctx = useContext(ChatbotContext);
-  if (!ctx) throw new Error("useChatbot must be used within ChatbotProvider");
-  return ctx;
-};
-
-// Исправленный адаптер: теперь прокидывает opts (историю)
-function wrapStreamingProvider(sp: StreamingProvider): ResponseProvider {
-  return {
-    async getResponse(prompt: string, opts?: any): Promise<BotResponse> {
-      if (sp.send) return await sp.send(prompt, opts);
-      return { text: "", intent: "empty", confidence: 0 };
-    },
-    // Прокидываем stream как есть, он уже поддерживает (prompt, opts)
-    stream: sp.stream,
-  };
+  sendMessage: (text: string, mode?: ChatMode) => Promise<void>;
+  clearChat: () => void;
 }
 
 interface ChatbotProviderProps {
   children: React.ReactNode;
-  storageKey?: string;
-  streamingProvider: StreamingProvider;
+  storageKey?: string; 
+  streamingProvider?: any;
 }
 
-export const ChatbotProvider: React.FC<ChatbotProviderProps> = ({ 
+export const ChatbotContext = createContext<ChatbotContextType | undefined>(undefined);
+
+export function ChatbotProvider({ 
   children, 
-  storageKey, 
+  storageKey = "korshi_chat_history", 
   streamingProvider 
-}) => {
+}: ChatbotProviderProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const coreRef = useRef<ChatbotCore | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  // Инициализация Core
+  // 1. ЗАГРУЗКА ИЗ LOCALSTORAGE
   useEffect(() => {
-    if (coreRef.current) return;
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      try {
+        setMessages(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse chat history", e);
+      }
+    }
+    setIsLoaded(true);
+  }, [storageKey]);
 
-    const provider = wrapStreamingProvider(streamingProvider);
-    coreRef.current = new ChatbotCore({ 
-      provider,
-      initialMessages: messages.length > 0 ? messages : undefined 
-    });
-
-    coreRef.current.onMessage((msg) => {
-      setMessages((prev) => {
-        const exists = prev.find((m) => m.id === msg.id);
-        return exists
-          ? prev.map((m) => (m.id === msg.id ? msg : m))
-          : [...prev, msg];
-      });
-    });
-  }, [streamingProvider]);
-
-  // Sync LocalStorage
+  // 2. СОХРАНЕНИЕ В LOCALSTORAGE
   useEffect(() => {
-    if (storageKey && messages.length > 0) {
+    if (isLoaded) {
       localStorage.setItem(storageKey, JSON.stringify(messages));
     }
-  }, [messages, storageKey]);
+  }, [messages, isLoaded, storageKey]);
 
-  // Загрузка истории при старте
-  useEffect(() => {
-    if (!storageKey) return;
-    const raw = localStorage.getItem(storageKey);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && messages.length === 0) {
-          setMessages(parsed);
-        }
-      } catch (e) { console.error(e); }
-    }
-  }, []);
+  // Функция очистки чата
+  const clearChat = useCallback(() => {
+    setMessages([]);
+    localStorage.removeItem(storageKey);
+  }, [storageKey]);
 
-  // Onboarding (только если чат пустой)
-  useEffect(() => {
-    if (messages.length > 0) return;
-    const onboardingMsg: Message = {
-      id: crypto.randomUUID(),
-      role: "ai",
-      text: ONBOARDING_PROMPT,
-      timestamp: Date.now(),
-      intent: "onboarding",
-    };
-    setMessages([onboardingMsg]);
-    setState("onboarding");
-  }, [messages.length]);
+  // ОСНОВНАЯ ФУНКЦИЯ ОТПРАВКИ
+  const sendMessage = useCallback(async (text: string, mode: ChatMode = "smart") => {
+    if (!text.trim()) return;
 
-  const sendMessage = useCallback(async (text: string) => {
-    if (!coreRef.current || !text.trim() || isStreaming) return;
+    // Генерируем читаемое время (например, 18:30)
+    const timeString = new Date().toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+
+    // ПОДГОТОВКА ИСТОРИИ ДЛЯ РОУТЕРА И LLM
+    // Важно: передаем 'text', чтобы createGroqbot его узнал
+    const historyForLlm = messages
+      .filter(m => m.text && m.text.trim() !== "")
+      .slice(-10)
+      .map(m => ({
+        role: m.role === "ai" ? "assistant" : "user",
+        text: m.text 
+      }));
+
+    const userMsgId = uuidv4();
+    const aiMsgId = uuidv4();
+
+    // Добавляем сообщения в стейт
+    setMessages((prev) => [
+      ...prev,
+      { id: userMsgId, role: "user", text, timestamp: timeString },
+      { id: aiMsgId, role: "ai", text: "", partial: true, timestamp: timeString }
+    ]);
+
+    setIsStreaming(true);
+
     try {
-      setIsStreaming(true);
-      await coreRef.current.sendMessage(text);
+      let fullContent = "";
+      const activeProvider = streamingProvider || smartStreamingRouter;
+      
+      const stream = activeProvider.stream(text, historyForLlm, mode);
+
+      for await (const chunk of stream) {
+        fullContent += chunk;
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === aiMsgId ? { ...msg, text: fullContent } : msg
+          )
+        );
+      }
+
+      // Завершаем стрим (убираем пульсацию)
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === aiMsgId ? { ...msg, partial: false } : msg
+        )
+      );
+    } catch (error) {
+      console.error("Chat Error:", error);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === aiMsgId 
+            ? { ...msg, text: "Ошибка связи. Попробуйте еще раз.", partial: false } 
+            : msg
+        )
+      );
     } finally {
       setIsStreaming(false);
     }
-  }, [isStreaming]);
+  }, [messages, streamingProvider]);
 
   return (
-    <ChatbotContext.Provider value={{ messages, sendMessage, isStreaming }}>
+    <ChatbotContext.Provider value={{ messages, isStreaming, sendMessage, clearChat }}>
       {children}
     </ChatbotContext.Provider>
   );
+}
+
+export const useChatbot = () => {
+  const context = useContext(ChatbotContext);
+  if (!context) {
+    throw new Error("useChatbot must be used within a ChatbotProvider");
+  }
+  return context;
 };
