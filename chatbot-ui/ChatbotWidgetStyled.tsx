@@ -231,7 +231,7 @@ export default function ChatbotWidgetStyled({ height, mode = "smart" }: ChatbotW
       <div className="shrink-0 p-3 bg-white/10 backdrop-blur-md dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
         <form
           onSubmit={(e) => { e.preventDefault(); submit(); }}
-          className="flex items-end gap-2 text-gray-200 backdrop-blur-md bg-black dark:bg-white/5 rounded-2xl p-1.5 focus-within:ring-2 ring-indigo-500/20 transition-all"
+          className="flex items-end gap-2 text-gray-200 backdrop-blur-md bg-white/70 dark:bg-white/5 rounded-2xl p-1.5 focus-within:ring-2 ring-indigo-500/20 transition-all"
         >
           <textarea
             ref={textareaRef}

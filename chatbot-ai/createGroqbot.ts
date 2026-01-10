@@ -86,7 +86,7 @@ export function createGroqbot(): StreamingProvider {
         fullText += chunk;
       }
       return { 
-        text: fullText.trim() || "Извините, я не смог сформировать ответ.", 
+        text: fullText.trim() || "Извините, я не смог сформировать ответ. Попробуйте еще раз.", 
         intent: "llm_generated", 
         confidence: 1.0 
       };
