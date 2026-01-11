@@ -1,4 +1,3 @@
-// pages/_app.tsx
 import "@/styles/globals.css";
 import { useState, useEffect } from "react";
 import type { AppProps } from "next/app";
@@ -25,16 +24,23 @@ export default function App({ Component, pageProps }: AppProps) {
       storageKey="korshi-chat"
       streamingProvider={createKorshiBot()}
     >
+      {/* ДОБАВЛЕНО: 
+        1. w-full — гарантирует, что контейнер не шире экрана.
+        2. overflow-x-hidden — "срезает" вылетающие элементы (белую полосу).
+        3. relative — для правильного позиционирования чат-кнопки.
+      */}
       <div
-        className={
-          theme === "dark"
-            ? "bg-gray-900 text-white min-h-screen"
-            : "bg-white text-gray-900 min-h-screen"
-        }
+        className={`
+          min-h-screen w-full overflow-x-hidden relative flex flex-col
+          ${theme === "dark" ? "bg-gray-900 text-white" : "bg-white text-gray-900"}
+        `}
       >
         <Header theme={theme} setTheme={setTheme} city={city} setCity={setCity} />
 
-        <main className="min-h-screen">
+        {/* main теперь имеет flex-grow, чтобы футер всегда прижимался к низу, 
+          а w-full не давал контенту распирать страницу.
+        */}
+        <main className="flex-grow w-full max-w-full">
           <Component {...pageProps} city={city} />
         </main>
 

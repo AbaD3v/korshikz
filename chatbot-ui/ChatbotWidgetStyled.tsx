@@ -170,7 +170,7 @@ export default function ChatbotWidgetStyled({ height, mode = "smart" }: ChatbotW
                   <div className={`px-4 py-2 rounded-2xl shadow-sm border text-[14px] leading-relaxed ${
                     isUser 
                       ? "bg-white/20 text-black border-green-300 dark:border-green-700 rounded-tr-none" 
-                      : "bg-indigo-600 dark:bg-slate-800 text-gray-200 border-slate-200 dark:border-slate-700 rounded-tl-none"
+                      : "bg-indigo-600 dark:bg-slate-800 text-white border-slate-200 dark:border-slate-700 rounded-tl-none"
                   }`}>
                     {/* РЕШЕНИЕ ПРОБЛЕМЫ ТУТ */}
                     {!isUser && isLastMessage && !isPartial && !isDoneTyping ? (
