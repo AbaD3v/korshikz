@@ -1,529 +1,371 @@
-// Файл: app/onboarding/page.tsx
-// Многошаговый онбординг (Wizard)
-// Шаги: 1) Основное 2) Привычки 3) Учёба 4) Жильё 5) Предпочтения соседа 6) О себе
-
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../lib/supabaseClient";
-import { sanitizeFileName } from "../lib/sanitizeFileName";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  User, Sparkles, GraduationCap, Home, Users2, Info, 
+  ChevronRight, ChevronLeft, Check, Camera, MapPin, 
+  Moon, Sun, Coffee, Dog, Cigarette, Calendar // Добавил Calendar
+} from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
-type ProfileForm = {
-  // Basic
-  full_name: string | null;
-  phone: string | null;
-  birthday: string | null;
-  city: string | null;
-  avatar_url: string | null;
-
-  // Habits
-  wake_time: string | null;
-  sleep_time: string | null;
-  cleanliness_level: number | null;
-  noise_tolerance: number | null;
-  schedule_type: string | null;
-
-  // Study
-  university: string | null;
-  faculty: string | null;
-  course: number | null;
-  study_type: string | null;
-  is_student: boolean | null;
-
-  // Housing prefs
-  budget_min: number | null;
-  budget_max: number | null;
-  preferred_location: string | null;
-  need_furnished: boolean | null;
-  room_type: string | null;
-
-  // Neighbor prefs
-  preferred_gender: string | null;
-  preferred_age_min: number | null;
-  preferred_age_max: number | null;
-  preferred_pets: boolean | null;
-  preferred_smoking: boolean | null;
-
-  // Matching
-  introvert_extrovert: string | null;
-  lifestyle: string | null;
-  about_me: string | null;
-};
-
-const initialForm: ProfileForm = {
-  full_name: null,
-  phone: null,
-  birthday: null,
-  city: null,
-  avatar_url: null,
-
-  wake_time: null,
-  sleep_time: null,
-  cleanliness_level: 3,
-  noise_tolerance: 3,
-  schedule_type: null,
-
-  university: null,
-  faculty: null,
-  course: null,
-  study_type: null,
-  is_student: null,
-
-  budget_min: null,
-  budget_max: null,
-  preferred_location: null,
-  need_furnished: null,
-  room_type: null,
-
-  preferred_gender: null,
-  preferred_age_min: null,
-  preferred_age_max: null,
-  preferred_pets: null,
-  preferred_smoking: null,
-
-  introvert_extrovert: null,
-  lifestyle: null,
-  about_me: null,
-};
+const STEPS = [
+  { id: 1, title: "Личность", icon: User },
+  { id: 2, title: "Быт", icon: Sparkles },
+  { id: 3, title: "Занятость", icon: GraduationCap },
+  { id: 4, title: "Бюджет", icon: Home },
+  { id: 5, title: "Сосед", icon: Users2 },
+  { id: 6, title: "О себе", icon: Info },
+];
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isFinished, setIsFinished] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [form, setForm] = useState<ProfileForm>(initialForm);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // avatar local
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  
+  const [form, setForm] = useState<any>({
+    full_name: "",
+    city: "Алматы",
+    birthday: "", // Изменил на пустую строку для работы инпута
+    cleanliness_level: 3,
+    noise_tolerance: 3,
+    schedule_type: "flexible",
+    is_student: true,
+    university: "",
+    faculty: "",
+    study_type: "",
+    budget_min: 50000,
+    budget_max: 150000,
+    preferred_location: "",
+    room_type: "room",
+    preferred_gender: "any",
+    preferred_age_min: 18,
+    preferred_age_max: 30,
+    preferred_pets: false,
+    preferred_smoking: false,
+    about_me: "",
+    isOnboarded: false,
+  });
+  
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const MAX_FILE_SIZE = 1024 * 1024 * 3; // 3MB
-
-  const mountedRef = useRef(true);
 
   useEffect(() => {
-    mountedRef.current = true;
-    (async () => {
-      try {
-        const { data: authData } = await supabase.auth.getUser();
-        const user = (authData as any)?.user ?? null;
-        if (!user) {
-          router.replace("/login");
-          return;
-        }
-        setUserId(user.id);
+    setMounted(true);
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return router.replace("/login");
+      setUserId(user.id);
 
-        const { data: profile, error } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .maybeSingle();
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
 
-        if (error) console.error("fetch profile error", error);
-
-        if (profile) {
-          // map DB profile to form
-          setForm((f) => ({ ...f, ...mapProfileToForm(profile) }));
-          if (profile.avatar_url) setAvatarPreview(profile.avatar_url);
-          if (profile.isOnboarded) {
-            // already onboarded — redirect to profile
-            router.replace(`/profile/${user.id}`);
-            return;
-          }
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        if (mountedRef.current) setLoading(false);
+      if (profile) {
+        if (profile.isOnboarded) return router.replace(`/profile/${user.id}`);
+        setForm((prev: any) => ({ ...prev, ...profile }));
+        if (profile.avatar_url) setAvatarPreview(profile.avatar_url);
       }
-    })();
-
-    return () => {
-      mountedRef.current = false;
-    };
+      setLoading(false);
+    }
+    init();
   }, [router]);
 
-  function mapProfileToForm(profile: any): Partial<ProfileForm> {
-    // Only take known keys, avoid unexpected fields
-    const out: any = {};
-    for (const k of Object.keys(initialForm)) {
-      if (profile[k] !== undefined) out[k] = profile[k];
-    }
-    return out;
-  }
-
-  /* ================= Avatar handling ================= */
-  const readFileAsDataURL = (file: File) =>
-    new Promise<string>((resolve, reject) => {
-      const r = new FileReader();
-      r.onerror = () => reject(new Error("Ошибка чтения файла"));
-      r.onload = () => resolve(r.result as string);
-      r.readAsDataURL(file);
-    });
-
-  const uploadAvatarToStorage = async (file: File, uid: string) => {
-    const safe = sanitizeFileName(file.name || `avatar-${Date.now()}`);
-    const path = `${uid}/${Date.now()}-${safe}`;
-    const bucket = "avatars";
-
-    const { data, error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true });
-    if (error) throw error;
-
-    const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path);
-    return publicData?.publicUrl ?? null;
-  };
-
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null;
-    setErrors((p) => ({ ...p, avatar: undefined }));
-
-    if (!f) {
-      setAvatarFile(null);
-      setAvatarPreview(null);
-      setForm((p) => ({ ...p, avatar_url: null }));
-      return;
-    }
-    if (f.size > MAX_FILE_SIZE) return setErrors((p) => ({ ...p, avatar: "Файл слишком большой (max 3MB)" }));
-
-    setAvatarFile(f);
-    const url = URL.createObjectURL(f);
-    setAvatarPreview(url);
-  };
-
-  /* ================= Validation ================= */
-  const validateStep = (s = step) => {
-    const e: Record<string, string> = {};
-    if (s === 1) {
-      if (!form.full_name || !form.full_name.trim()) e.full_name = "Введите имя";
-      // phone optional but if present basic check
-      if (form.phone && form.phone.length < 6) e.phone = "Неверный телефон";
-    }
-    if (s === 3) {
-      if (form.is_student === null && (!form.university || !form.university.trim())) e.university = "Укажите университет или отметьте, что вы не студент";
-    }
-    // add more validations as needed
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
-  /* ================= Save ================= */
-  const savePartial = async (partial: Partial<ProfileForm> = {}) => {
-    if (!userId) return;
-    setSaving(true);
-    try {
-      const payload = { ...form, ...partial } as any;
-
-      // if avatarFile present, upload and set avatar_url
-      if (avatarFile) {
-        try {
-          const publicUrl = await uploadAvatarToStorage(avatarFile, userId);
-          payload.avatar_url = publicUrl;
-        } catch (err) {
-          console.error("avatar upload err", err);
-        }
-      }
-
-      // Upsert: if profile exists update, else insert
-      const { data, error } = await supabase.from("profiles").upsert([{ id: userId, ...payload }], { onConflict: "id" });
-      if (error) throw error;
-    } catch (err: any) {
-      console.error("savePartial error", err);
-    } finally {
-      if (mountedRef.current) setSaving(false);
-    }
-  };
-
-  // Save on step change (auto-save)
-  useEffect(() => {
-    // validate before moving forward
-    // nothing here — we'll call save when user clicks next/finish
-  }, [step]);
-
   const handleNext = async () => {
-    if (!validateStep(step)) return;
-    // save current form partial
-    await savePartial();
-    setStep((s) => s + 1);
-  };
-
-  const handleBack = () => setStep((s) => Math.max(1, s - 1));
-
-  const handleFinish = async () => {
-    if (!validateStep(step)) return;
     setSaving(true);
     try {
-      const payload = { ...form, isOnboarded: true } as any;
-      if (avatarFile) {
-        try {
-          payload.avatar_url = await uploadAvatarToStorage(avatarFile, userId!);
-        } catch (err) {
-          console.error("avatar upload error", err);
+      const isLast = step === STEPS.length;
+      const payload: any = { ...form };
+      
+      // 1. Приведение ID и статуса
+      payload.id = userId;
+      payload.isOnboarded = isLast;
+
+      // 2. Валидация Даты Рождения (Birthday)
+      // Если дата не введена или пуста, отправляем null, иначе чистый YYYY-MM-DD
+      if (!payload.birthday || payload.birthday.trim() === "") {
+        payload.birthday = null;
+      } else {
+        const d = new Date(payload.birthday);
+        if (!isNaN(d.getTime())) {
+          payload.birthday = d.toISOString().split('T')[0];
+        } else {
+          payload.birthday = null;
         }
       }
+      
+      // 3. Приведение чисел (Усиленная проверка)
+payload.budget_max = payload.budget_max ? Number(payload.budget_max) : null;
+payload.budget_min = payload.budget_min ? Number(payload.budget_min) : null;
+payload.preferred_age_min = payload.preferred_age_min ? Number(payload.preferred_age_min) : null;
+payload.preferred_age_max = payload.preferred_age_max ? Number(payload.preferred_age_max) : null;
 
-      // upsert final
-      const { error } = await supabase.from("profiles").upsert([{ id: userId, ...payload }], { onConflict: "id" });
-      if (error) throw error;
+// Важно: принудительно ограничиваем диапазон 1-5 для уровней чистоты и шума
+payload.cleanliness_level = Math.max(1, Math.min(5, Number(payload.cleanliness_level || 3)));
+payload.noise_tolerance = Math.max(1, Math.min(5, Number(payload.noise_tolerance || 3)));
 
-      // redirect to profile
-      router.push(`/profile/${userId}`);
-    } catch (err: any) {
-      console.error("finish error", err);
-      setErrors((p) => ({ ...p, submit: err.message || String(err) }));
+      const { error } = await supabase.from("profiles").upsert(payload, { onConflict: 'id' });
+      
+      if (error) {
+        console.error("Ошибка сохранения:", error.message);
+        alert(`Ошибка базы: ${error.message}`);
+        return;
+      }
+      
+      if (isLast) {
+        setIsFinished(true);
+        setTimeout(() => router.push(`/profile/${userId}`), 2500);
+      } else {
+        setStep(s => s + 1);
+      }
+    } catch (err) {
+      console.error("Критическая ошибка:", err);
     } finally {
-      if (mountedRef.current) setSaving(false);
+      setSaving(false);
     }
   };
 
-  if (loading) return <div className="p-6 text-center">Загрузка...</div>;
+  if (!mounted) return null;
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#020617]"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
-    <div className="max-w-2xl mx-auto p-6 bg-white rounded shadow mt-6">
-      <h1 className="text-2xl font-bold mb-4">Онбординг — расскажи о себе</h1>
+    <div className="min-h-screen bg-[#FDFDFF] dark:bg-[#020617] p-4 md:p-12 text-slate-900 dark:text-white transition-colors duration-500">
+      
+      <AnimatePresence>
+        {isFinished && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-white dark:bg-[#020617] text-center">
+            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="space-y-6">
+              <div className="mx-auto w-24 h-24 bg-indigo-500 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(99,102,241,0.4)]">
+                <Check size={48} className="text-white" strokeWidth={4} />
+              </div>
+              <h2 className="text-4xl font-black italic uppercase tracking-tighter">Летим в профиль</h2>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
-        <div>Шаг {step} из 6</div>
-        <div className="flex-1 bg-gray-100 h-2 rounded overflow-hidden">
-          <div style={{ width: `${(step / 6) * 100}%` }} className="h-2 bg-emerald-500" />
-        </div>
-        {saving && <div className="text-xs">Сохранение...</div>}
+      <div className="max-w-5xl mx-auto">
+        <header className="mb-16">
+          <div className="flex justify-between items-end">
+            <div className="space-y-2">
+              <div className="flex gap-1">
+                {STEPS.map(s => (
+                  <div key={s.id} className={`h-1 rounded-full transition-all duration-700 ${step >= s.id ? "w-8 bg-indigo-500" : "w-2 bg-slate-200 dark:bg-slate-800"}`} />
+                ))}
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-500 pt-4">Stage {step}/06</p>
+              <h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter leading-none">
+                {STEPS.find(s => s.id === step)?.title}
+              </h1>
+            </div>
+          </div>
+        </header>
+
+        <main className="min-h-[480px]">
+          <AnimatePresence mode="wait">
+            <motion.div key={step} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+              
+              {/* STEP 1: PERSONAL - ИСПРАВЛЕНО (Добавлен Birthday) */}
+              {step === 1 && (
+                <div className="grid md:grid-cols-2 gap-12 items-start">
+                  <div className="space-y-8">
+                    <InputGroup label="Твое полное имя">
+                      <input value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})} placeholder="Alex Smith" className="premium-input" />
+                    </InputGroup>
+                    
+                    {/* НОВОЕ ПОЛЕ: ДАТА РОЖДЕНИЯ */}
+                    <InputGroup label="Дата рождения">
+                      <div className="relative">
+                        <Calendar className="absolute left-5 top-1/2 -translate-y-1/2 text-indigo-500" size={20} />
+                        <input 
+                          type="date" 
+                          value={form.birthday || ""} 
+                          onChange={e => setForm({...form, birthday: e.target.value})} 
+                          className="premium-input pl-14 appearance-none" 
+                        />
+                      </div>
+                    </InputGroup>
+
+                    <InputGroup label="Город проживания">
+                      <div className="relative">
+                        <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-indigo-500" size={20} />
+                        <input value={form.city} onChange={e => setForm({...form, city: e.target.value})} className="premium-input pl-14" />
+                      </div>
+                    </InputGroup>
+                  </div>
+                  
+                  <div className="relative group mx-auto">
+                    <div className="w-48 h-48 rounded-[3.5rem] bg-slate-100 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center overflow-hidden">
+                      {avatarPreview ? <img src={avatarPreview} className="w-full h-full object-cover" /> : <Camera className="text-slate-400" size={32} />}
+                      <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => e.target.files?.[0] && setAvatarPreview(URL.createObjectURL(e.target.files[0]))} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2: HABITS */}
+              {step === 2 && (
+                <div className="grid md:grid-cols-2 gap-12">
+                  <InputGroup label="Когда ты активен?">
+                    <div className="grid grid-cols-1 gap-4">
+                      <OptionCard active={form.schedule_type === 'morning'} icon={<Sun size={20}/>} label="Жаворонок" onClick={() => setForm({...form, schedule_type: 'morning'})} />
+                      <OptionCard active={form.schedule_type === 'evening'} icon={<Moon size={20}/>} label="Сова" onClick={() => setForm({...form, schedule_type: 'evening'})} />
+                      <OptionCard active={form.schedule_type === 'flexible'} icon={<Coffee size={20}/>} label="Гибкий" onClick={() => setForm({...form, schedule_type: 'flexible'})} />
+                    </div>
+                  </InputGroup>
+                  <div className="space-y-12 bg-slate-50 dark:bg-white/5 p-10 rounded-[3rem]">
+                    <InputGroup label={`Уровень чистоты: ${form.cleanliness_level}`}>
+                      <input type="range" min="1" max="5" value={form.cleanliness_level} onChange={e => setForm({...form, cleanliness_level: e.target.value})} className="premium-range" />
+                    </InputGroup>
+                    <InputGroup label={`Шумоустойчивость: ${form.noise_tolerance}`}>
+                      <input type="range" min="1" max="5" value={form.noise_tolerance} onChange={e => setForm({...form, noise_tolerance: e.target.value})} className="premium-range" />
+                    </InputGroup>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3, 4, 5, 6 - оставляем без изменений, так как там логика верна */}
+              {step === 3 && (
+                <div className="grid md:grid-cols-2 gap-8">
+                  <InputGroup label="Твой статус">
+                    <div className="flex gap-4">
+                      <button onClick={() => setForm({...form, is_student: true})} className={`flex-1 py-6 rounded-[2rem] font-black uppercase text-[10px] tracking-widest border-2 transition-all ${form.is_student ? 'border-indigo-500 bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'border-slate-100 dark:border-slate-800 text-slate-400'}`}>Студент</button>
+                      <button onClick={() => setForm({...form, is_student: false})} className={`flex-1 py-6 rounded-[2rem] font-black uppercase text-[10px] tracking-widest border-2 transition-all ${!form.is_student ? 'border-indigo-500 bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 'border-slate-100 dark:border-slate-800 text-slate-400'}`}>Работаю</button>
+                    </div>
+                  </InputGroup>
+                  <InputGroup label="Вуз или Компания">
+                    <input value={form.university} onChange={e => setForm({...form, university: e.target.value})} placeholder="KBTU / Google" className="premium-input" />
+                  </InputGroup>
+                  <InputGroup label="Факультет / Должность">
+                    <input value={form.faculty} onChange={e => setForm({...form, faculty: e.target.value})} className="premium-input" />
+                  </InputGroup>
+                  <InputGroup label="Курс или Грейд">
+                    <input value={form.study_type} onChange={e => setForm({...form, study_type: e.target.value})} className="premium-input" />
+                  </InputGroup>
+                </div>
+              )}
+
+              {step === 4 && (
+                <div className="space-y-12">
+                  <div className="grid md:grid-cols-2 gap-8">
+                    <InputGroup label="Минимальный бюджет (₸)">
+                      <input type="number" value={form.budget_min || ""} onChange={e => setForm({...form, budget_min: e.target.value})} className="premium-input text-2xl" />
+                    </InputGroup>
+                    <InputGroup label="Максимальный бюджет (₸)">
+                      <input type="number" value={form.budget_max || ""} onChange={e => setForm({...form, budget_max: e.target.value})} className="premium-input text-2xl text-indigo-500" />
+                    </InputGroup>
+                  </div>
+                  <InputGroup label="Где хочешь жить?">
+                    <input value={form.preferred_location} onChange={e => setForm({...form, preferred_location: e.target.value})} placeholder="Район или улица" className="premium-input" />
+                  </InputGroup>
+                </div>
+              )}
+
+              {step === 5 && (
+                <div className="grid md:grid-cols-2 gap-12">
+                  <div className="space-y-8">
+                    <InputGroup label="Кого ищем?">
+                      <select value={form.preferred_gender} onChange={e => setForm({...form, preferred_gender: e.target.value})} className="premium-input bg-transparent appearance-none">
+                        <option value="any">Любой пол</option>
+                        <option value="male">Только парни</option>
+                        <option value="female">Только девушки</option>
+                      </select>
+                    </InputGroup>
+                    <InputGroup label="Возраст соседа">
+                      <div className="flex items-center gap-4">
+                        <input type="number" value={form.preferred_age_min} onChange={e => setForm({...form, preferred_age_min: e.target.value})} className="premium-input text-center py-4" />
+                        <div className="h-1 w-6 bg-slate-200 rounded-full"/>
+                        <input type="number" value={form.preferred_age_max} onChange={e => setForm({...form, preferred_age_max: e.target.value})} className="premium-input text-center py-4" />
+                      </div>
+                    </InputGroup>
+                  </div>
+                  <div className="bg-indigo-500/5 p-10 rounded-[3.5rem] space-y-6 border border-indigo-500/10">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Критичные фильтры</p>
+                    <ToggleItem active={form.preferred_pets} label="Ок с животными" icon={<Dog size={18}/>} onClick={() => setForm({...form, preferred_pets: !form.preferred_pets})} />
+                    <ToggleItem active={form.preferred_smoking} label="Ок с курением" icon={<Cigarette size={18}/>} onClick={() => setForm({...form, preferred_smoking: !form.preferred_smoking})} />
+                  </div>
+                </div>
+              )}
+
+              {step === 6 && (
+                <div className="space-y-8">
+                  <InputGroup label="Твой Manifesto">
+                    <textarea value={form.about_me} onChange={e => setForm({...form, about_me: e.target.value})} className="premium-input min-h-[250px] resize-none py-8" placeholder="Расскажи что-то..." />
+                  </InputGroup>
+                </div>
+              )}
+
+            </motion.div>
+          </AnimatePresence>
+        </main>
+
+        <footer className="mt-20 flex justify-between items-center">
+          <button onClick={() => setStep(s => s - 1)} disabled={step === 1 || saving} className="group flex items-center gap-3 font-black uppercase text-[10px] tracking-widest text-slate-400 hover:text-indigo-500 transition-colors disabled:opacity-0">
+            <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> Назад
+          </button>
+          
+          <button onClick={handleNext} disabled={saving} className="relative group overflow-hidden px-12 py-6 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-[2.5rem] font-black italic uppercase tracking-tighter shadow-2xl hover:scale-105 active:scale-95 transition-all">
+            <span className="relative z-10 flex items-center gap-3">
+              {saving ? "Processing..." : step === 6 ? "Finish Base" : "Next Step"}
+              <ChevronRight size={20} />
+            </span>
+            <div className="absolute inset-0 bg-indigo-600 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+          </button>
+        </footer>
       </div>
 
-      {/* Step 1: Basic */}
-      {step === 1 && (
-        <div className="space-y-3">
-          <label className="block">
-            <div className="text-sm font-medium">Полное имя</div>
-            <input value={form.full_name ?? ""} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="w-full border p-2 rounded" />
-            {errors.full_name && <p className="text-red-600 text-sm">{errors.full_name}</p>}
-          </label>
+      <style jsx global>{`
+        .premium-input {
+          width: 100%; padding: 1.5rem 2rem; background: transparent;
+          border: 2px solid #F1F5F9; border-radius: 2.5rem; font-weight: 800; outline: none; transition: 0.4s;
+        }
+        .dark .premium-input { border-color: #1E293B; color: white; }
+        .premium-input:focus { border-color: #6366F1; background: #fff; }
+        .dark .premium-input:focus { background: #0F172A; }
+        .premium-range { width: 100%; height: 6px; border-radius: 10px; background: #E2E8F0; appearance: none; outline: none; }
+        .premium-range::-webkit-slider-thumb { appearance: none; width: 24px; height: 24px; background: #6366F1; border-radius: 50%; cursor: pointer; }
+      `}</style>
+    </div>
+  );
+}
 
-          <label className="block">
-            <div className="text-sm font-medium">Телефон (опционально)</div>
-            <input value={form.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full border p-2 rounded" />
-            {errors.phone && <p className="text-red-600 text-sm">{errors.phone}</p>}
-          </label>
+// Вспомогательные компоненты без изменений
+function InputGroup({ label, children, error }: any) {
+  return (
+    <div className="space-y-4 w-full">
+      <div className="flex justify-between items-center px-4">
+        <label className="text-[10px] font-black uppercase text-indigo-500/60 tracking-[0.2em]">{label}</label>
+      </div>
+      {children}
+    </div>
+  );
+}
 
-          <label className="block">
-            <div className="text-sm font-medium">Дата рождения</div>
-            <input type="date" value={form.birthday ?? ""} onChange={(e) => setForm({ ...form, birthday: e.target.value })} className="w-full border p-2 rounded" />
-          </label>
+function OptionCard({ active, onClick, label, icon }: any) {
+  return (
+    <button onClick={onClick} className={`flex items-center gap-4 p-6 rounded-[2.5rem] border-2 transition-all ${active ? "border-indigo-500 bg-indigo-500 text-white shadow-lg shadow-indigo-500/20" : "border-slate-100 dark:border-slate-800 text-slate-500"}`}>
+      <div className={`${active ? "text-white" : "text-indigo-500"}`}>{icon}</div>
+      <span className="font-black uppercase text-xs tracking-widest">{label}</span>
+    </button>
+  );
+}
 
-          <label className="block">
-            <div className="text-sm font-medium">Город</div>
-            <input value={form.city ?? ""} onChange={(e) => setForm({ ...form, city: e.target.value })} className="w-full border p-2 rounded" />
-          </label>
-
-          <label className="block">
-            <div className="text-sm font-medium">Аватар</div>
-            <input type="file" accept="image/*" onChange={handleAvatarChange} />
-            {avatarPreview && <img src={avatarPreview} className="w-24 h-24 rounded-full mt-2 object-cover border" alt="preview" />}
-            {errors.avatar && <p className="text-red-600 text-sm">{errors.avatar}</p>}
-          </label>
-
-          <div className="flex gap-2 mt-4">
-            <button onClick={handleNext} className="ml-auto bg-emerald-600 text-white px-4 py-2 rounded">Далее</button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 2: Habits */}
-      {step === 2 && (
-        <div className="space-y-3">
-          <label>
-            <div className="text-sm font-medium">Время подъёма</div>
-            <input value={form.wake_time ?? ""} onChange={(e) => setForm({ ...form, wake_time: e.target.value })} className="w-full border p-2 rounded" placeholder="08:00" />
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Время сна</div>
-            <input value={form.sleep_time ?? ""} onChange={(e) => setForm({ ...form, sleep_time: e.target.value })} className="w-full border p-2 rounded" placeholder="23:30" />
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Аккуратность (1-5)</div>
-            <input type="number" min={1} max={5} value={String(form.cleanliness_level ?? 3)} onChange={(e) => setForm({ ...form, cleanliness_level: Number(e.target.value) })} className="w-full border p-2 rounded" />
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Шумоустойчивость (1-5)</div>
-            <input type="number" min={1} max={5} value={String(form.noise_tolerance ?? 3)} onChange={(e) => setForm({ ...form, noise_tolerance: Number(e.target.value) })} className="w-full border p-2 rounded" />
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Тип графика</div>
-            <select value={form.schedule_type ?? ""} onChange={(e) => setForm({ ...form, schedule_type: e.target.value })} className="w-full border p-2 rounded">
-              <option value="">— Выберите —</option>
-              <option value="morning">Утренний</option>
-              <option value="evening">Вечерний</option>
-              <option value="flexible">Гибкий</option>
-            </select>
-          </label>
-
-          <div className="flex gap-2 mt-4">
-            <button onClick={handleBack} className="px-4 py-2 border rounded">Назад</button>
-            <button onClick={handleNext} className="ml-auto bg-emerald-600 text-white px-4 py-2 rounded">Далее</button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 3: Study */}
-      {step === 3 && (
-        <div className="space-y-3">
-          <label>
-            <div className="text-sm font-medium">Университет</div>
-            <input value={form.university ?? ""} onChange={(e) => setForm({ ...form, university: e.target.value })} className="w-full border p-2 rounded" />
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Факультет</div>
-            <input value={form.faculty ?? ""} onChange={(e) => setForm({ ...form, faculty: e.target.value })} className="w-full border p-2 rounded" />
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Курс</div>
-            <input type="number" min={1} value={String(form.course ?? "")} onChange={(e) => setForm({ ...form, course: Number(e.target.value) })} className="w-full border p-2 rounded" />
-          </label>
-
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={Boolean(form.is_student)} onChange={(e) => setForm({ ...form, is_student: e.target.checked })} /> Я студент
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Тип обучения</div>
-            <select value={form.study_type ?? ""} onChange={(e) => setForm({ ...form, study_type: e.target.value })} className="w-full border p-2 rounded">
-              <option value="">— Выберите —</option>
-              <option value="bachelor">Бакалавр</option>
-              <option value="master">Магистратура</option>
-              <option value="college">Колледж</option>
-              <option value="other">Другое</option>
-            </select>
-          </label>
-
-          <div className="flex gap-2 mt-4">
-            <button onClick={handleBack} className="px-4 py-2 border rounded">Назад</button>
-            <button onClick={handleNext} className="ml-auto bg-emerald-600 text-white px-4 py-2 rounded">Далее</button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 4: Housing prefs */}
-      {step === 4 && (
-        <div className="space-y-3">
-          <label>
-            <div className="text-sm font-medium">Бюджет мин</div>
-            <input type="number" value={String(form.budget_min ?? "")} onChange={(e) => setForm({ ...form, budget_min: Number(e.target.value) })} className="w-full border p-2 rounded" />
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Бюджет макс</div>
-            <input type="number" value={String(form.budget_max ?? "")} onChange={(e) => setForm({ ...form, budget_max: Number(e.target.value) })} className="w-full border p-2 rounded" />
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Предпочтительный район</div>
-            <input value={form.preferred_location ?? ""} onChange={(e) => setForm({ ...form, preferred_location: e.target.value })} className="w-full border p-2 rounded" />
-          </label>
-
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={Boolean(form.need_furnished)} onChange={(e) => setForm({ ...form, need_furnished: e.target.checked })} /> Нужна мебель
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Тип жилья</div>
-            <select value={form.room_type ?? ""} onChange={(e) => setForm({ ...form, room_type: e.target.value })} className="w-full border p-2 rounded">
-              <option value="">— Выберите —</option>
-              <option value="room">Комната</option>
-              <option value="studio">Студия</option>
-              <option value="1br">1-к квартира</option>
-              <option value="2br">2-к квартира</option>
-            </select>
-          </label>
-
-          <div className="flex gap-2 mt-4">
-            <button onClick={handleBack} className="px-4 py-2 border rounded">Назад</button>
-            <button onClick={handleNext} className="ml-auto bg-emerald-600 text-white px-4 py-2 rounded">Далее</button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 5: Neighbor prefs */}
-      {step === 5 && (
-        <div className="space-y-3">
-          <label>
-            <div className="text-sm font-medium">Пол соседа</div>
-            <select value={form.preferred_gender ?? ""} onChange={(e) => setForm({ ...form, preferred_gender: e.target.value })} className="w-full border p-2 rounded">
-              <option value="">Не важно</option>
-              <option value="male">Мужчина</option>
-              <option value="female">Женщина</option>
-              <option value="other">Другое</option>
-            </select>
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Возраст мин</div>
-            <input type="number" value={String(form.preferred_age_min ?? "")} onChange={(e) => setForm({ ...form, preferred_age_min: Number(e.target.value) })} className="w-full border p-2 rounded" />
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Возраст макс</div>
-            <input type="number" value={String(form.preferred_age_max ?? "")} onChange={(e) => setForm({ ...form, preferred_age_max: Number(e.target.value) })} className="w-full border p-2 rounded" />
-          </label>
-
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={Boolean(form.preferred_pets)} onChange={(e) => setForm({ ...form, preferred_pets: e.target.checked })} /> Ок с питомцами
-          </label>
-
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={Boolean(form.preferred_smoking)} onChange={(e) => setForm({ ...form, preferred_smoking: e.target.checked })} /> Ок с курящими
-          </label>
-
-          <div className="flex gap-2 mt-4">
-            <button onClick={handleBack} className="px-4 py-2 border rounded">Назад</button>
-            <button onClick={handleNext} className="ml-auto bg-emerald-600 text-white px-4 py-2 rounded">Далее</button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 6: About */}
-      {step === 6 && (
-        <div className="space-y-3">
-          <label>
-            <div className="text-sm font-medium">Интроверт / Экстраверт</div>
-            <select value={form.introvert_extrovert ?? ""} onChange={(e) => setForm({ ...form, introvert_extrovert: e.target.value })} className="w-full border p-2 rounded">
-              <option value="">— Выберите —</option>
-              <option value="introvert">Интроверт</option>
-              <option value="extrovert">Экстраверт</option>
-              <option value="mixed">Смешанный</option>
-            </select>
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">Образ жизни</div>
-            <select value={form.lifestyle ?? ""} onChange={(e) => setForm({ ...form, lifestyle: e.target.value })} className="w-full border p-2 rounded">
-              <option value="">— Выберите —</option>
-              <option value="calm">Спокойный</option>
-              <option value="active">Активный</option>
-              <option value="party">Праздничный</option>
-              <option value="work">Рабочий</option>
-            </select>
-          </label>
-
-          <label>
-            <div className="text-sm font-medium">О себе (коротко)</div>
-            <textarea value={form.about_me ?? ""} onChange={(e) => setForm({ ...form, about_me: e.target.value })} className="w-full border p-2 rounded h-32" />
-          </label>
-
-          {errors.submit && <p className="text-red-600">{errors.submit}</p>}
-
-          <div className="flex gap-2 mt-4">
-            <button onClick={handleBack} className="px-4 py-2 border rounded">Назад</button>
-            <button onClick={handleFinish} disabled={saving} className="ml-auto bg-emerald-600 text-white px-4 py-2 rounded">{saving ? "Сохранение..." : "Завершить"}</button>
-          </div>
-        </div>
-      )}
+function ToggleItem({ active, label, icon, onClick }: any) {
+  return (
+    <div onClick={onClick} className="flex items-center justify-between cursor-pointer group">
+      <div className="flex items-center gap-3">
+        <div className={`p-2 rounded-xl ${active ? "bg-indigo-500 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-400"}`}>{icon}</div>
+        <span className={`text-xs font-black uppercase tracking-tight ${active ? "text-slate-900 dark:text-white" : "text-slate-400"}`}>{label}</span>
+      </div>
+      <div className={`w-12 h-6 rounded-full p-1 transition-colors ${active ? "bg-indigo-500" : "bg-slate-200 dark:bg-slate-800"}`}>
+        <div className={`w-4 h-4 bg-white rounded-full transition-transform ${active ? "translate-x-6" : "translate-x-0"}`} />
+      </div>
     </div>
   );
 }

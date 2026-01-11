@@ -1,16 +1,21 @@
-// pages/listings/[id].js
+"use client";
+
 import Head from "next/head";
 import { useRouter } from "next/router";
-import { useEffect, useMemo, useState, useRef } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/hooks/utils/supabase/client";
 import MapView from "@/components/mapview";
+import { 
+  ArrowLeft, Share2, MapPin, Eye, MessageSquare, 
+  Phone, Heart, Info, List, PlusCircle, ChevronDown, X, AlertCircle 
+} from "lucide-react";
 
-// MOBILE-FIRST, production-ready Listing detail with thorough responsive fixes
 export default function ListingDetail() {
   const router = useRouter();
   const { id } = router.query;
 
+  // --- Состояния из твоего исходника ---
   const [listing, setListing] = useState(null);
   const [owner, setOwner] = useState(null);
   const [user, setUser] = useState(null);
@@ -21,18 +26,15 @@ export default function ListingDetail() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
   const [incViewDone, setIncViewDone] = useState(false);
-
-  // new: mobile map fullscreen state
   const [mobileMapOpen, setMobileMapOpen] = useState(false);
-  // detect mobile/tablet for feature toggles
   const [isMobile, setIsMobile] = useState(false);
 
-  // touch swipe support
   const touchStartX = useRef(null);
   const touchEndX = useRef(null);
 
+  // --- Логика определения мобилки ---
   useEffect(() => {
-    const onResize = () => setIsMobile(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+    const onResize = () => setIsMobile(window.innerWidth < 768);
     onResize();
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -50,18 +52,13 @@ export default function ListingDetail() {
         return cleaned.split(",").map((s) => s.trim()).filter(Boolean);
       }
       return [];
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   };
 
-  // keyboard navigation for gallery + close fullscreen map
+  // --- Клавиатура (Esc, Стрелки) ---
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") {
-        setLightboxOpen(false);
-        setMobileMapOpen(false);
-      }
+      if (e.key === "Escape") { setLightboxOpen(false); setMobileMapOpen(false); }
       if (!images.length) return;
       if (e.key === "ArrowRight") setActiveIndex((i) => Math.min(i + 1, images.length - 1));
       if (e.key === "ArrowLeft") setActiveIndex((i) => Math.max(i - 1, 0));
@@ -70,27 +67,19 @@ export default function ListingDetail() {
     return () => window.removeEventListener("keydown", onKey);
   }, [images.length]);
 
-  // load current user, listing and owner
+  // --- Загрузка данных (Полная версия) ---
   useEffect(() => {
     if (!id) return;
     let mounted = true;
     (async () => {
       setLoading(true);
       setError(null);
-
       try {
-        try {
-          const { data: authData } = await supabase.auth.getUser();
-          if (mounted) setUser(authData?.data?.user ?? null);
-        } catch (e) {
-          console.warn("auth.getUser error", e);
-        }
+        const { data: authData } = await supabase.auth.getUser();
+        if (mounted) setUser(authData?.user ?? null);
 
         const { data: listingData, error: listingErr } = await supabase
-          .from("listings")
-          .select("*")
-          .eq("id", id)
-          .single();
+          .from("listings").select("*").eq("id", id).single();
 
         if (listingErr) throw listingErr;
         if (!mounted) return;
@@ -98,46 +87,29 @@ export default function ListingDetail() {
 
         const imgs = parseImageUrls(listingData?.image_urls);
         setImages(imgs.length ? imgs : ["/no-image.png"]);
-        setActiveIndex(0);
 
         if (listingData?.user_id) {
-          const { data: ownerData, error: ownerErr } = await supabase
-            .from("profiles")
-            .select("id, full_name, avatar_url, university, course, phone")
-            .eq("id", listingData.user_id)
-            .single();
-
-          if (ownerErr && ownerErr.code !== "PGRST116") {
-            console.warn("owner load error", ownerErr);
-          } else {
-            setOwner(ownerData ?? null);
-          }
+          const { data: ownerData } = await supabase
+            .from("profiles").select("id, full_name, avatar_url, university, course, phone")
+            .eq("id", listingData.user_id).single();
+          setOwner(ownerData);
         }
 
-        try {
-          if (!incViewDone) {
-            await supabase
-              .from("listings")
-              .update({ views: (listingData?.views ?? 0) + 1 })
-              .eq("id", id);
-            setIncViewDone(true);
-          }
-        } catch (e) {
-          console.warn("inc views error", e);
+        if (!incViewDone) {
+          await supabase.from("listings")
+            .update({ views: (listingData?.views ?? 0) + 1 }).eq("id", id);
+          setIncViewDone(true);
         }
       } catch (e) {
-        console.error("load listing error", e);
-        setError(e?.message || String(e));
+        setError(e.message);
       } finally {
         if (mounted) setLoading(false);
       }
     })();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [id]);
 
-  // Local save/favourite (simple localStorage)
+  // --- Локальное избранное ---
   useEffect(() => {
     if (!id) return;
     const savedMap = JSON.parse(localStorage.getItem("saved_listings_v1") || "{}");
@@ -146,440 +118,252 @@ export default function ListingDetail() {
 
   const toggleSave = () => {
     const savedMap = JSON.parse(localStorage.getItem("saved_listings_v1") || "{}");
-    if (saved) {
-      delete savedMap[id];
-      setSaved(false);
-    } else {
-      savedMap[id] = { savedAt: new Date().toISOString(), title: listing?.title ?? "" };
-      setSaved(true);
-    }
+    if (saved) { delete savedMap[id]; setSaved(false); }
+    else { savedMap[id] = { savedAt: new Date().toISOString(), title: listing?.title }; setSaved(true); }
     localStorage.setItem("saved_listings_v1", JSON.stringify(savedMap));
   };
 
-  // share
-  const onShare = async () => {
-    const shareUrl = `${location.origin}/listings/${id}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: listing?.title || "Объявление", url: shareUrl });
-      } else {
-        await navigator.clipboard.writeText(shareUrl);
-        alert("Ссылка скопирована в буфер обмена");
+const onShare = async () => {
+    const shareUrl = `${window.location.origin}/listings/${id}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: listing?.title, url: shareUrl });
+      } catch (err) {
+        console.log("Отмена шаринга");
       }
-    } catch (e) {
-      console.warn("share error", e);
-      alert("Не получилось поделиться");
+    } else {
+      navigator.clipboard.writeText(shareUrl);
+      alert("Ссылка скопирована");
     }
   };
 
-// open whatsapp safely
-const openWhatsApp = () => {
-  if (!owner?.phone) {
-    alert("Телефон владельца не указан");
-    return;
-  }
+  const openWhatsApp = () => {
+    if (!owner?.phone) return alert("Телефон не указан");
 
-  // Удаляем всё, кроме цифр
-  let phone = owner.phone.replace(/\D/g, "");
+    // Форматируем телефон: удаляем всё кроме цифр и меняем 8 на 7
+    let phone = owner.phone.replace(/\D/g, "");
+    if (phone.startsWith("8")) phone = "7" + phone.slice(1);
 
-  // Конвертация под Казахстан / СНГ
-  // Если начинается с 8 → превращаем в +7
-  if (phone.startsWith("8")) {
-    phone = "7" + phone.slice(1);
-  }
+    // Ссылка на текущее объявление для сообщения
+    const shareUrl = `${window.location.origin}/listings/${id}`;
+    
+    // Формируем текст сообщения
+    const message = `Здравствуйте! Меня заинтересовало ваше объявление: "${listing?.title}". \nЦена: ${listing?.price} ₸ \nСсылка: ${shareUrl}`;
+    
+    // Кодируем сообщение для URL
+    const encodedMessage = encodeURIComponent(message);
 
-  // Если начинается с 7 → добавляем +
-  if (phone.startsWith("7")) {
-    phone = "+" + phone;
-  }
-
-  // Если уже начинается с +7 — оставляем
-  if (owner.phone.startsWith("+")) {
-    phone = "+" + phone;
-  }
-
-  const text = encodeURIComponent(
-    `Привет! Я заинтересован в объявлении: ${listing?.title || ""}`
-  );
-
-  const href = `https://wa.me/${phone}?text=${text}`;
-  window.open(href, "_blank");
-};
-
-
-  // call phone
-  const onCall = () => {
-    const phone = owner?.phone?.replace(/[^\d+]/g, "");
-    if (!phone) {
-      alert("Телефон владельца не указан");
-      return;
-    }
-    window.location.href = `tel:${phone}`;
+    // Открываем WhatsApp (для wa.me плюс в номере не обязателен, достаточно чистых цифр)
+    window.open(`https://wa.me/${phone}?text=${encodedMessage}`, "_blank");
   };
 
-  // go to chat
-  const startChat = () => {
-    if (!owner?.id) {
-      alert("Профиль владельца не доступен");
-      return;
-    }
-    router.push(`/chat/${owner.id}`);
-  };
-
-  // complaint stub (now uses confirmation and avoids layout shift)
-  const onReport = () => {
-    const reason = prompt("Опишите причину жалобы (коротко)");
-    if (!reason) return;
-    alert("Жалоба отправлена модераторам");
-  };
-
-  // gallery controls
-  const prevImage = () => setActiveIndex((i) => Math.max(0, i - 1));
-  const nextImage = () => setActiveIndex((i) => Math.min(images.length - 1, i + 1));
-  const openLightbox = (idx = 0) => {
-    setActiveIndex(idx);
-    setLightboxOpen(true);
-  };
-
-  // touch handlers for swipe gallery (mobile UX)
-  const onTouchStart = (e) => {
-    touchStartX.current = e.touches[0].clientX;
-  };
-  const onTouchMove = (e) => {
-    touchEndX.current = e.touches[0].clientX;
-  };
+  // --- Свайпы для галереи ---
+  const onTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
+  const onTouchMove = (e) => { touchEndX.current = e.touches[0].clientX; };
   const onTouchEnd = () => {
-    if (touchStartX.current == null || touchEndX.current == null) return;
+    if (!touchStartX.current || !touchEndX.current) return;
     const dx = touchStartX.current - touchEndX.current;
-    const threshold = 50; // px
-    if (dx > threshold) nextImage();
-    else if (dx < -threshold) prevImage();
-    touchStartX.current = null;
-    touchEndX.current = null;
+    if (dx > 50) setActiveIndex((i) => Math.min(images.length - 1, i + 1));
+    else if (dx < -50) setActiveIndex((i) => Math.max(0, i - 1));
+    touchStartX.current = null; touchEndX.current = null;
   };
 
-  // prevent background scroll while mobile map fullscreen is open
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (mobileMapOpen) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = prev;
-      };
-    }
-  }, [mobileMapOpen]);
-
-  if (loading)
-    return (
-      <div className="text-center py-20 text-lg animate-pulse">Загрузка данных…</div>
-    );
-
-  if (error)
-    return (
-      <div className="text-center py-20 text-red-600">Ошибка загрузки: {error}</div>
-    );
-
-  if (!listing)
-    return (
-      <div className="text-center py-20 text-xl">Объявление не найдено 😕</div>
-    );
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] dark:bg-[#020617]"><div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" /></div>;
+  if (error) return <div className="min-h-screen flex items-center justify-center dark:bg-[#020617] text-red-500 p-4 text-center">Ошибка: {error}</div>;
 
   return (
-    <>
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#020617] transition-colors duration-500 pb-24 md:pb-10">
       <Head>
-        <title>{listing.title ? `${listing.title} — Объявление` : "Объявление"}</title>
-        <meta name="description" content={listing.description || listing.title || ""} />
-        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>{listing.title} — Korshi</title>
+        <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=0" />
       </Head>
 
-      <div className="max-w-6xl mx-auto px-4 py-6 sm:py-8 overflow-x-hidden">
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden border border-gray-200 dark:border-gray-700"
+      <div className="max-w-5xl mx-auto px-4 py-6 md:py-10 space-y-6">
+        
+        {/* Панель навигации */}
+        <div className="flex justify-between items-center">
+          <button onClick={() => router.back()} className="text-gray-500 hover:text-indigo-600 dark:text-gray-400 flex items-center gap-2 text-sm font-black transition-all">
+            <ArrowLeft size={18} /> НАЗАД
+          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={toggleSave} className={`p-3 rounded-2xl border transition-all ${saved ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-400'}`}>
+              <Heart size={20} fill={saved ? "white" : "none"} />
+            </button>
+            <button onClick={onShare} className="p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl text-gray-600 dark:text-gray-300 active:scale-95 transition-all">
+              <Share2 size={20} />
+            </button>
+          </div>
+        </div>
+
+        <motion.main 
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          className="space-y-6"
         >
-          {/* gallery */}
-          <div
-            className="relative w-full h-[280px] sm:h-[520px] bg-black"
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
+          {/* ГАЛЕРЕЯ */}
+          <section 
+            className="relative h-[320px] sm:h-[550px] bg-gray-100 dark:bg-gray-800 rounded-[2.5rem] overflow-hidden shadow-2xl border border-white dark:border-gray-800 cursor-zoom-in"
+            onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+            onClick={() => setLightboxOpen(true)}
           >
-            <div className="absolute inset-0 flex items-center justify-between px-3 pointer-events-none">
-              <button
-                onClick={prevImage}
-                aria-label="Предыдущее фото"
-                className="pointer-events-auto bg-black/40 text-white p-2 rounded-full"
-                style={{ backdropFilter: 'blur(4px)' }}
-              >
-                ‹
-              </button>
-              <button
-                onClick={nextImage}
-                aria-label="Следующее фото"
-                className="pointer-events-auto bg-black/40 text-white p-2 rounded-full"
-                style={{ backdropFilter: 'blur(4px)' }}
-              >
-                ›
-              </button>
+            <AnimatePresence mode="wait">
+              <motion.img 
+                key={activeIndex} src={images[activeIndex]} 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="w-full h-full object-cover" 
+              />
+            </AnimatePresence>
+
+            <div className="absolute bottom-6 right-6 bg-black/40 backdrop-blur-md text-white px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest uppercase">
+              {activeIndex + 1} / {images.length}
             </div>
 
-            <div className="h-full w-full flex overflow-hidden">
-              <div
-                className="flex h-full transition-transform ease-out duration-300"
-                style={{ transform: `translateX(-${activeIndex * 100}%)` }}
-              >
-                {images.map((src, i) => (
-                  <div key={i} className="w-full h-full flex-shrink-0 relative">
-                    <img
-                      src={src}
-                      alt={`Фото ${i + 1}`}
-                      className="w-full h-full object-cover"
-                      onClick={() => openLightbox(i)}
-                      loading="lazy"
-                      style={{ cursor: "zoom-in" }}
-                    />
-                    <div className="absolute bottom-3 left-3 bg-black/60 text-white px-2 py-1 rounded-md text-sm">
-                      {i === activeIndex ? `${i + 1}/${images.length}` : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* thumbnails */}
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-3 flex gap-2">
-              {images.map((src, i) => (
-                <button
-                  key={i}
-                  onClick={() => setActiveIndex(i)}
-                  aria-label={`Показать фото ${i + 1}`}
-                  className={`w-12 h-8 rounded overflow-hidden border ${i === activeIndex ? "ring-2 ring-emerald-500" : "border-white/30"}`}
-                >
-                  <img src={src} className="w-full h-full object-cover" loading="lazy" />
-                </button>
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-1.5">
+              {images.map((_, i) => (
+                <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === activeIndex ? "w-8 bg-indigo-500" : "w-1.5 bg-white/50"}`} />
               ))}
             </div>
-          </div>
+          </section>
 
-          <div className="p-4 sm:p-7 space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <h1 className="title-clamp text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+          {/* КОНТЕНТ */}
+          <div className="bg-white dark:bg-gray-900 rounded-[2.5rem] p-6 md:p-10 shadow-xl border border-gray-100 dark:border-gray-800 space-y-8">
+            
+            <div className="flex flex-col md:flex-row justify-between gap-6">
+              <div className="space-y-4">
+                <h1 className="text-3xl md:text-5xl font-black text-gray-900 dark:text-white tracking-tight leading-tight uppercase">
                   {listing.title}
                 </h1>
-
-                {listing.address && (
-                  <div className="text-sm text-gray-500 mt-2 truncate">{listing.address}</div>
-                )}
-
-                <div className="mt-3 flex flex-wrap gap-2 items-center text-sm text-gray-600">
-                  <div>Просмотров: <strong>{listing.views ?? 0}</strong></div>
-                  {listing.category && (
-                    <div className="px-2 py-0.5 bg-gray-100 rounded text-sm">{listing.category}</div>
-                  )}
-                  {listing.property_type && (
-                    <div className="px-2 py-0.5 bg-gray-100 rounded text-sm">{listing.property_type}</div>
-                  )}
+                <div className="flex items-center gap-2 text-gray-500 font-bold">
+                  <MapPin size={20} className="text-indigo-500" />
+                  <span className="text-lg">{listing.address}</span>
                 </div>
               </div>
 
-              <div className="w-full sm:w-56 flex-shrink-0 flex flex-col items-stretch gap-3">
-                <div className="text-right">
-                  <div className="text-2xl sm:text-2xl font-bold text-emerald-600">{formatPrice(listing.price)}</div>
-                  {listing.rent_type && <div className="text-sm text-gray-500">{listing.rent_type}</div>}
+              <div className="hidden md:block text-right bg-indigo-50/50 dark:bg-indigo-900/10 p-8 rounded-[2.5rem] border border-indigo-100 dark:border-indigo-900/30 min-w-[280px]">
+                <div className="text-4xl font-black text-indigo-600 dark:text-indigo-400 tracking-tighter">
+                  {formatPrice(listing.price)}
                 </div>
-
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <button
-                    onClick={toggleSave}
-                    className={`px-3 py-2 rounded-lg border flex-1 text-center whitespace-nowrap ${saved ? "bg-emerald-600 text-white" : "bg-white text-gray-700"}`}
-                    aria-pressed={saved}
-                  >
-                    {saved ? "Сохранено" : "Сохранить"}
-                  </button>
-
-                  <button onClick={onShare} className="px-3 py-2 rounded-lg border bg-white flex-1 text-center whitespace-nowrap">
-                    Поделиться
-                  </button>
-                </div>
+                <div className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mt-2">Ежемесячно</div>
               </div>
             </div>
 
-            {/* DESCRIPTION */}
-            {listing.description && (
-              <section>
-                <h2 className="text-lg font-semibold mb-2">Описание</h2>
-                <p className="text-gray-600 dark:text-gray-300 leading-relaxed break-words">{listing.description}</p>
-              </section>
-            )}
+            {/* СЕТКА ДЕТАЛЕЙ */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <DetailCard label="Комнаты" icon={List}>{listing.rooms ?? "—"}</DetailCard>
+              <DetailCard label="Площадь" icon={PlusCircle}>{listing.area_total ? `${listing.area_total} м²` : "—"}</DetailCard>
+              <DetailCard label="Этаж" icon={ChevronDown}>{listing.floor ? `${listing.floor}/${listing.floors_total}` : "—"}</DetailCard>
+              <DetailCard label="Постройка" icon={Info}>{listing.year_built ?? "—"}</DetailCard>
+            </div>
 
-            {/* DETAILS grid */}
-            <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <DetailCard label="Комнаты">{listing.rooms ?? "—"}</DetailCard>
-              <DetailCard label="Площадь">{listing.area_total ? `${listing.area_total} м²` : "—"}</DetailCard>
-              <DetailCard label="Этаж">{listing.floor ? `${listing.floor}${listing.floors_total ? ` / ${listing.floors_total}` : ""}` : "—"}</DetailCard>
-              <DetailCard label="Год постройки">{listing.year_built ?? "—"}</DetailCard>
-            </section>
+            {/* ОПИСАНИЕ */}
+            <div className="space-y-4">
+              <h3 className="text-2xl font-black tracking-tight dark:text-white uppercase text-sm opacity-50">Описание</h3>
+              <p className="text-gray-600 dark:text-gray-400 leading-relaxed text-lg font-medium whitespace-pre-wrap">
+                {listing.description}
+              </p>
+            </div>
 
-            {/* MAP */}
-            {listing.lat && listing.lng && (
-              <section>
-                <h3 className="text-lg font-semibold mb-2">Расположение</h3>
-
-                <div className="relative">
-                  <div className="w-full h-[250px] sm:h-[360px] rounded-xl overflow-hidden border">
-                    <MapView
-                      coordinates={[listing.lat, listing.lng]}
-                      height="100%"
-                      showCard={false}
-                      disableScrollZoom={isMobile} /* pass to MapView if supported */
-                    />
-                  </div>
-
-                  <button
-                    aria-label="Открыть карту на весь экран"
-                    onClick={() => setMobileMapOpen(true)}
-                    className="sm:hidden absolute bottom-3 right-3 bg-black/70 text-white px-3 py-1 rounded-lg text-sm backdrop-blur shadow"
-                  >
-                    Развернуть карту
-                  </button>
+            {/* КАРТА */}
+            {listing.lat && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-end">
+                   <h3 className="text-2xl font-black tracking-tight dark:text-white uppercase text-sm opacity-50">Расположение</h3>
+                   <button onClick={() => setMobileMapOpen(true)} className="text-indigo-600 font-black text-xs uppercase">На весь экран</button>
                 </div>
-              </section>
+                <div className="h-[280px] rounded-[2.5rem] overflow-hidden border border-gray-100 dark:border-gray-800 relative">
+                  <MapView coordinates={[listing.lat, listing.lng]} height="100%" showCard={false} />
+                </div>
+              </div>
             )}
-{/* OWNER / ACTIONS */}
-<div className="bg-gray-50 dark:bg-gray-800 border p-3 sm:p-4 rounded-xl flex flex-col gap-4">
 
-  {/* ------ OWNER INFO ------ */}
-  <div className="flex items-start gap-3 min-w-0">
-    <img
-      src={owner?.avatar_url || "/default-avatar.png"}
-      className="w-14 h-14 rounded-full object-cover border flex-shrink-0"
-      alt="avatar"
-    />
+            {/* ВЛАДЕЛЕЦ (стиль твоего профиля) */}
+            <div className="pt-10 border-t border-gray-100 dark:border-gray-800 flex flex-col md:flex-row items-center justify-between gap-8">
+              <div className="flex items-center gap-5">
+                <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-indigo-50 dark:border-indigo-900/30 shadow-xl">
+                  <img src={owner?.avatar_url || "/default-avatar.png"} className="w-full h-full object-cover" alt="Owner" />
+                </div>
+                <div>
+                  <div className="text-xl font-black dark:text-white leading-none">{owner?.full_name || "Пользователь"}</div>
+                  <div className="text-indigo-500 font-bold mt-1 uppercase text-xs tracking-wider">
+                    {owner?.university || "Частное лицо"} {owner?.course ? `• ${owner.course} курс` : ""}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex gap-3 w-full md:w-auto">
+                <button onClick={openWhatsApp} className="flex-1 md:flex-none px-8 py-4 bg-[#22C55E] hover:bg-[#16A34A] text-white rounded-2xl shadow-xl shadow-green-500/20 transition-all font-black text-xs uppercase tracking-widest active:scale-95">
+                  WhatsApp
+                </button>
+                <button onClick={() => router.push(`/chat/${owner?.id}`)} className="flex-1 md:flex-none px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl shadow-xl shadow-indigo-500/20 transition-all font-black text-xs uppercase tracking-widest active:scale-95">
+                  Написать
+                </button>
+              </div>
+            </div>
 
-    <div className="min-w-0 flex flex-col">
-      <div className="font-semibold text-base sm:text-lg truncate max-w-[220px] sm:max-w-[280px]">
-        {owner?.full_name || "Без имени"}
+            <div className="flex justify-between items-center text-[10px] font-black text-gray-400 uppercase tracking-widest pt-4">
+               <div>Добавлено: {new Date(listing.created_at).toLocaleDateString()}</div>
+               <div className="flex items-center gap-1.5"><Eye size={12}/> {listing.views ?? 0}</div>
+            </div>
+          </div>
+        </motion.main>
       </div>
 
-      <div className="text-sm text-gray-500 truncate max-w-[220px] sm:max-w-[280px]">
-        {owner?.university
-          ? `${owner.university}${owner.course ? ` — ${owner.course} курс` : ""}`
-          : ""}
+      {/* LIGHTBOX (твоя логика + новый визуал) */}
+      <AnimatePresence>
+        {lightboxOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4"
+          >
+            <button onClick={() => setLightboxOpen(false)} className="absolute top-8 right-8 text-white/50 hover:text-white transition-colors"><X size={32}/></button>
+            <img src={images[activeIndex]} className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl" />
+            <div className="mt-8 flex gap-3 overflow-x-auto pb-4 max-w-full px-4">
+               {images.map((img, i) => (
+                 <button key={i} onClick={() => setActiveIndex(i)} className={`w-16 h-12 rounded-xl overflow-hidden border-2 transition-all flex-shrink-0 ${i === activeIndex ? "border-indigo-500 scale-110" : "border-white/10 opacity-50"}`}>
+                   <img src={img} className="w-full h-full object-cover" />
+                 </button>
+               ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* FULLSCREEN MAP MODAL */}
+      <AnimatePresence>
+        {mobileMapOpen && (
+          <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 25 }} className="fixed inset-0 z-[70] bg-white dark:bg-gray-950 flex flex-col">
+            <div className="p-4 flex justify-between items-center border-b dark:border-gray-800">
+              <span className="font-black uppercase tracking-widest text-sm">Карта</span>
+              <button onClick={() => setMobileMapOpen(false)} className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full"><X size={20}/></button>
+            </div>
+            <div className="flex-1"><MapView coordinates={[listing.lat, listing.lng]} height="100%" showCard={false} /></div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* MOBILE STICKY BAR */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-[#020617]/80 backdrop-blur-2xl border-t border-gray-100 dark:border-gray-800 p-5 z-50 flex items-center justify-between shadow-[0_-10px_40px_rgba(0,0,0,0.1)]">
+        <div>
+          <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 leading-none">{formatPrice(listing.price)}</div>
+          <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">В месяц</div>
+        </div>
+        <button onClick={() => router.push(`/chat/${owner?.id}`)} className="bg-indigo-600 text-white px-10 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-500/30 active:scale-95 transition-all">
+          Написать
+        </button>
       </div>
     </div>
-  </div>
-
-  {/* ------ ACTION BUTTONS ------ */}
-  <div className="w-full flex flex-col sm:flex-row sm:flex-wrap gap-2">
-    <button
-      onClick={startChat}
-      className="w-full sm:w-auto flex-1 text-sm px-4 py-2 bg-emerald-600 text-white rounded-lg text-center"
-    >
-      Написать
-    </button>
-
-    <button
-      onClick={openWhatsApp}
-      className="w-full sm:w-auto flex-1 text-sm px-4 py-2 border rounded-lg text-center"
-    >
-      WhatsApp
-    </button>
-
-    <button
-      onClick={onCall}
-      className="w-full sm:w-auto flex-1 text-sm px-4 py-2 border rounded-lg text-center"
-    >
-      Позвонить
-    </button>
-
-    <button
-      onClick={onReport}
-      className="w-full sm:w-auto flex-1 text-sm px-4 py-2 border rounded-lg text-red-600 text-center"
-    >
-      Пожаловаться
-    </button>
-  </div>
-</div>
-{/* META (дата + ID) */}
-<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 pt-1 text-sm text-gray-500">
-  <div className="truncate">Добавлено: {new Date(listing.created_at).toLocaleString()}</div>
-  <div className="truncate">ID: {listing.id}</div>
-</div>
-</div> {/* <-- closes p-6 wrapper */ }
-</motion.div>
-</div>
-      {/* Lightbox */}
-      {lightboxOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85">
-          <button className="absolute top-6 right-6 text-white text-2xl" onClick={() => setLightboxOpen(false)} aria-label="Закрыть">✕</button>
-          <button className="absolute left-6 text-white text-3xl" onClick={prevImage} aria-label="Предыдущее">‹</button>
-          <div className="max-w-[96%] max-h-[92%]">
-            <img src={images[activeIndex]} className="max-w-full max-h-[90vh] object-contain" alt={`Фото ${activeIndex + 1}`} />
-            <div className="text-center text-white mt-3">{activeIndex + 1} / {images.length}</div>
-          </div>
-          <button className="absolute right-6 text-white text-3xl" onClick={nextImage} aria-label="Следующее">›</button>
-        </div>
-      )}
-
-      {/* Fullscreen mobile map modal */}
-      {mobileMapOpen && (
-        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/80 backdrop-blur z-50 flex flex-col">
-          <div className="flex items-center justify-between p-3 text-white">
-            <div className="text-lg font-semibold">Карта</div>
-            <div className="flex items-center gap-2">
-              <button
-                className="text-sm bg-white/10 px-3 py-1 rounded"
-                onClick={() => {
-                  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${listing.lat},${listing.lng}`)}`;
-                  window.open(url, "_blank");
-                }}
-                aria-label="Открыть в Google Maps"
-              >
-                Открыть в Google Maps
-              </button>
-
-              <button className="text-2xl px-3 py-0.5" onClick={() => setMobileMapOpen(false)} aria-label="Закрыть карту">✕</button>
-            </div>
-          </div>
-
-          <div className="flex-1">
-            <MapView coordinates={[listing.lat, listing.lng]} height="100%" showCard={false} disableScrollZoom={false} />
-          </div>
-        </div>
-      )}
-
-      {/* title clamp & small responsive tweaks */}
-      <style jsx>{`
-        .title-clamp { display: block; }
-        @media (max-width: 640px) {
-          .title-clamp {
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-            word-break: break-word;
-          }
-        }
-
-        /* ensure long buttons/text don't overflow the viewport */
-        :global(body) { overscroll-behavior-y: contain; }
-      `}</style>
-    </>
   );
 }
 
-/* -------------------------
-   Small presentational components
-   ------------------------- */
-
-function DetailCard({ label, children }) {
+function DetailCard({ label, children, icon: Icon }) {
   return (
-    <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-xl border">
-      <div className="text-sm text-gray-500 mb-1">{label}</div>
-      <div className="text-base font-medium">{children}</div>
+    <div className="bg-[#F8FAFC] dark:bg-[#020617]/50 p-5 rounded-[2rem] border border-gray-100 dark:border-gray-800 transition-all hover:border-indigo-200 dark:hover:border-indigo-900/40 group">
+      <div className="flex items-center gap-3 mb-2">
+        <div className="p-2 bg-white dark:bg-gray-800 rounded-xl text-indigo-500 shadow-sm group-hover:scale-110 transition-transform">
+          <Icon size={18} />
+        </div>
+        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest opacity-60">{label}</span>
+      </div>
+      <div className="text-xl font-black text-gray-900 dark:text-white truncate">{children}</div>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+// pages/listings/index.tsx
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
@@ -11,8 +12,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 import ListingMap from "@/components/ListingMap";
 import ListingCard from "@/components/ListingCard";
-
-export default function ListingsPage({ city }: { city: string }) {
+export default function ListingsPage() {
   const router = useRouter();
   
   const [isMounted, setIsMounted] = useState(false);
@@ -20,7 +20,8 @@ export default function ListingsPage({ city }: { city: string }) {
   const [loading, setLoading] = useState(true);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  // --- ПОЛНЫЙ НАБОР ФИЛЬТРОВ (СИНХРОНИЗИРОВАНО С БАЗОЙ) ---
+  // --- ПОЛНЫЙ НАБОР ФИЛЬТРОВ ---
+  const [city, setCity] = useState(""); // Теперь город живет в стейте
   const [search, setSearch] = useState("");
   const [priceMin, setPriceMin] = useState<number>(0);
   const [priceMax, setPriceMax] = useState<number>(5000000);
@@ -29,12 +30,24 @@ export default function ListingsPage({ city }: { city: string }) {
   const [propertyType, setPropertyType] = useState<string>(""); 
   const [district, setDistrict] = useState("");
   const [areaMin, setAreaMin] = useState("");
-  const [areaMax, setAreaMax] = useState(""); // Добавлено
+  const [areaMax, setAreaMax] = useState("");
   const [floor, setFloor] = useState("");
   const [yearBuilt, setYearBuilt] = useState("");
 
-  useEffect(() => { setIsMounted(true); }, []);
+  // 1. Ждем монтирования и парсим URL параметры
+  useEffect(() => {
+    if (router.isReady) {
+      const { city: cityQuery, district: districtQuery } = router.query;
+      
+      if (cityQuery) setCity(cityQuery as string);
+      if (districtQuery && districtQuery !== "Любой район") {
+        setDistrict(districtQuery as string);
+      }
+      setIsMounted(true);
+    }
+  }, [router.isReady, router.query]);
 
+  // 2. Функция запроса с защитой от регистра и пробелов
   const fetchListings = useCallback(async () => {
     if (!isMounted) return;
     setLoading(true);
@@ -45,45 +58,58 @@ export default function ListingsPage({ city }: { city: string }) {
         .eq("status", "active")
         .order("created_at", { ascending: false });
 
-      // 1. Город и Поиск
-      if (city) query = query.ilike("city", `%${city}%`);
-      if (search) query = query.ilike("title", `%${search}%`);
+      // 1. Город (ILIKE делает поиск независимым от регистра: астана = Астана)
+      if (city && city.trim() !== "") {
+        // Используем точное совпадение через ilike без %, 
+        // чтобы 'Алматы' не находило 'Алматы область' случайно, если не нужно
+        query = query.ilike("city", city.trim());
+      }
+
+      // 2. Район (Частичное совпадение, игнорируя регистр)
+      if (district && district !== "Любой район") {
+        query = query.ilike("district", `%${district.trim()}%`);
+      }
       
-      // 2. Цена (numeric)
+      // 3. Поиск по названию (Частичное совпадение)
+      if (search && search.trim() !== "") {
+        query = query.ilike("title", `%${search.trim()}%`);
+      }
+
+      // 4. Цена (numeric)
       query = query.gte("price", priceMin || 0).lte("price", priceMax || 999999999);
 
-      // 3. Комнаты (integer)
+      // 5. Комнаты (integer)
       if (rooms.length > 0) query = query.in("rooms", rooms);
 
-      // 4. Район (district)
-      if (district) query = query.ilike("district", `%${district}%`);
-
-      // 5. Типы (property_type, rent_type)
+      // 6. Типы (точное соответствие из select)
       if (propertyType) query = query.eq("property_type", propertyType);
       if (rentType) query = query.eq("rent_type", rentType);
 
-      // 6. Площадь (area_total)
+      // 7. Площадь, Этаж и Год (приведение к числу для надежности)
       if (areaMin) query = query.gte("area_total", Number(areaMin));
       if (areaMax) query = query.lte("area_total", Number(areaMax));
-
-      // 7. Этаж и Год постройки
       if (floor) query = query.eq("floor", Number(floor));
       if (yearBuilt) query = query.gte("year_built", Number(yearBuilt));
 
       const { data, error } = await query;
       if (error) throw error;
       setListings(data || []);
+
     } catch (err) {
-      console.error("Ошибка запроса:", err);
+      console.error("Ошибка запроса к Supabase:", err);
     } finally {
       setLoading(false);
     }
-  }, [isMounted, city, search, priceMin, priceMax, rooms, rentType, propertyType, district, areaMin, areaMax, floor, yearBuilt]);
-
-  useEffect(() => { fetchListings(); }, [fetchListings]);
+  }, [
+    isMounted, city, district, search, priceMin, priceMax, 
+    rooms, rentType, propertyType, areaMin, areaMax, floor, yearBuilt
+  ]);
+  // 3. Вызов загрузки при изменении любого фильтра
+  useEffect(() => {
+    fetchListings();
+  }, [fetchListings]);
 
   if (!isMounted) return null;
-
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-white dark:bg-[#020617]">
       
