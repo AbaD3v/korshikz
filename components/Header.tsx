@@ -105,13 +105,13 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
   const isActive = (href: string) => router.pathname === href || router.pathname.startsWith(href + "/");
 
   return (
-    <header className="sticky top-0 z-50 w-full bg-white/75 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200/50 dark:border-gray-800/50 transition-all">
-      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-50 w-full max-w-full bg-white/75 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200/50 dark:border-gray-800/50 transition-all overflow-visible">
+      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-2 sm:gap-4">
         
-        {/* 1. Logo */}
-        <Link href="/" className="flex items-center gap-2 group shrink-0">
-          <div className="relative w-32 h-10 rounded-xl overflow-hidden shadow-indigo-500/20 shadow-lg group-hover:scale-105 transition-transform">
-            <Image src="/logo.jpg" alt="Logo" fill className="object-cover" />
+        {/* 1. Logo - Добавлен shrink для мобилок */}
+        <Link href="/" className="flex items-center shrink-0 group min-w-0">
+          <div className="relative w-28 sm:w-32 h-9 sm:h-10 rounded-xl overflow-hidden shadow-indigo-500/20 shadow-lg group-hover:scale-105 transition-transform">
+            <Image src="/logo.jpg" alt="Logo" fill className="object-cover" priority />
           </div>
         </Link>
 
@@ -126,10 +126,10 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
         </nav>
 
         {/* 3. Actions */}
-        <div className="flex items-center gap-2 sm:gap-4">
+        <div className="flex items-center gap-1 sm:gap-3 ml-auto">
           
-          {/* City Select (Custom style) */}
-          <div className="hidden lg:flex items-center gap-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full group">
+          {/* City Select (Скрыт на маленьких мобильных) */}
+          <div className="hidden lg:flex items-center gap-1 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full">
             <MapPin size={14} className="text-indigo-500" />
             <select
               value={city}
@@ -145,52 +145,47 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
 
           <Link
             href="/create"
-            className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-md shadow-indigo-500/20 transition-all active:scale-95"
+            className="hidden xs:flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-indigo-500/20 transition-all active:scale-95"
           >
-            <PlusCircle size={18} /> <span>Создать</span>
+            <PlusCircle size={18} /> <span className="hidden sm:inline">Создать</span>
           </Link>
 
-          <div className="w-[1px] h-6 bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block" />
-
           {/* Theme & User Group */}
-          <div className="flex items-center gap-1 sm:gap-3">
-            <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors">
+          <div className="flex items-center gap-1 sm:gap-2">
+            <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400">
               {theme === "light" ? <Moon size={20} /> : <Sun size={20} className="text-yellow-400" />}
             </button>
 
             {user ? (
-              <div className="flex items-center gap-2 sm:gap-4">
-                <Link href="/chat" className="relative p-2 text-gray-500 hover:text-indigo-600 transition-colors">
+              <div className="flex items-center gap-1 sm:gap-3">
+                <Link href="/chat" className="relative p-2 text-gray-500 hover:text-indigo-600">
                   <MessageCircle size={22} />
                   <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-gray-900" />
                 </Link>
                 <ProfileButton user={profile ?? { id: user?.id }} />
-                <button onClick={handleLogout} className="hidden lg:flex p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-colors">
-                  <LogOut size={20} />
-                </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <Link href="/auth/login" className="text-sm font-bold px-3 py-2 text-gray-600 dark:text-gray-300 hover:text-indigo-600 transition-colors">
+              <div className="flex items-center gap-1">
+                <Link href="/auth/login" className="text-[12px] sm:text-sm font-bold px-2 sm:px-3 py-2 text-gray-600 dark:text-gray-300">
                   Войти
                 </Link>
-                <Link href="/auth/register" className="text-sm font-bold px-4 py-2 bg-gray-900 dark:bg-white dark:text-black text-white rounded-full hover:opacity-90 transition-all">
+                <Link href="/auth/register" className="hidden xs:block text-[12px] sm:text-sm font-bold px-3 sm:px-4 py-2 bg-gray-900 dark:bg-white dark:text-black text-white rounded-full hover:opacity-90">
                   Регистрация
                 </Link>
               </div>
             )}
             
             {/* Mobile Menu Toggle */}
-            <button onClick={() => setOpen(!open)} className="md:hidden p-2 text-gray-600 dark:text-gray-300">
-              {open ? <X size={26} /> : <Menu size={26} />}
+            <button onClick={() => setOpen(!open)} className="md:hidden p-1.5 text-gray-600 dark:text-gray-300">
+              {open ? <X size={24} /> : <Menu size={24} />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile Navigation Dropdown */}
+      {/* Mobile Navigation Dropdown - Исправлено позиционирование */}
       {open && (
-        <div className="md:hidden absolute top-full left-0 w-full bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 p-4 space-y-4 animate-in slide-in-from-top-2 duration-200">
+        <div className="md:hidden absolute top-full left-0 right-0 w-full bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 p-4 space-y-4 shadow-xl">
           <div className="grid grid-cols-2 gap-2">
             <Link href="/listings" onClick={() => setOpen(false)} className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 font-bold text-sm">
               <List className="text-indigo-500" /> Объявления
@@ -199,11 +194,14 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
               <PlusCircle /> Создать
             </Link>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1">
              <Link href="/about" onClick={() => setOpen(false)} className="block p-3 text-center font-medium hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl">О проекте</Link>
+             {!user && (
+                <Link href="/auth/register" onClick={() => setOpen(false)} className="block p-3 text-center font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/10 rounded-xl">Регистрация</Link>
+             )}
              {user && (
-               <button onClick={handleLogout} className="w-full p-3 text-red-500 font-bold border border-red-100 dark:border-red-900/30 rounded-xl transition-colors">
-                 Выйти из аккаунта
+               <button onClick={handleLogout} className="w-full p-3 text-red-500 font-bold border border-red-50 dark:border-red-900/10 rounded-xl">
+                 Выйти
                </button>
              )}
           </div>

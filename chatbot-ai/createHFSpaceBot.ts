@@ -1,3 +1,4 @@
+// код: chatbot-ai/createHFSpaceBot.ts
 import type { StreamingProvider, BotResponse } from "../chatbot/types/ChatbotTypes";
 
 const LOCAL_API = "/api/chat";
