@@ -515,7 +515,7 @@ export const intents: Intent[] = [
     lang: "any",
     category: "abzalNeGay",
     priority: 5,
-    patterns: [/(Абзал гей?)|(Abzal gay?)|(Аба гей)/i],
+    patterns: [/(абзал гей?)|(Abzal gay?)|(Аба гей)/i],
     responses: [
       "Абзал не гей! Он мой создатель, настоящий творец и вообще озн гейсн.",
       "Абзал не гей, он просто программирует меня с любовью ❤️.",
