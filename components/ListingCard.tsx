@@ -1,160 +1,105 @@
-"use client";
+import { motion } from "framer-motion";
+import { MapPin, Sparkles, Moon, Sun, GraduationCap } from "lucide-react";
 
-import { motion, AnimatePresence } from "framer-motion";
-import Image from "next/image";
-import { useMemo, useState } from "react";
-import { MapPin, ChevronLeft, ChevronRight, Heart } from "lucide-react";
-
-// --- Вспомогательные функции ---
-
-// Правильное склонение комнат: 1 комната, 2 комнаты, 5 комнат
-const getRoomWord = (n: number) => {
-  const lastDigit = n % 10;
-  const lastTwoDigits = n % 100;
-  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) return "комнат";
-  if (lastDigit === 1) return "комната";
-  if (lastDigit >= 2 && lastDigit <= 4) return "комнаты";
-  return "комнат";
-};
-
-const formatPrice = (n: number) => (n == null ? "" : `${Number(n).toLocaleString("ru-RU")} ₸`);
-
-export default function ListingCard({ listing, onClick }: { listing: any, onClick: () => void }) {
-  // Исправленный парсинг картинок
-  const urls = useMemo(() => {
-    const raw = listing.image_urls ?? listing.images ?? [];
-    if (Array.isArray(raw)) return raw.filter(Boolean);
-    if (typeof raw === "string") {
-      return raw.replace(/[{} "\[\]]/g, "").split(",").filter(Boolean);
-    }
-    return [];
-  }, [listing]);
-
-  const [mainIndex, setMainIndex] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
-
-  const nextImg = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setMainIndex((prev) => (prev + 1 === urls.length ? 0 : prev + 1));
-  };
-
-  const prevImg = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setMainIndex((prev) => (prev === 0 ? urls.length - 1 : prev - 1));
-  };
+export default function ListingCard({ listing: profile, onClick }: any) {
+  // В твоем новом API 'listing' — это на самом деле объект профиля.
+  // А само объявление (цена, адрес) лежит в массиве profile.listings
+  const actualListing = profile.listings?.[0]; 
+  
+  // Безопасное получение цены (если нет листинга, берем бюджет из профиля)
+  const displayPrice = actualListing?.price ?? profile.budget ?? 0;
 
   return (
-    <motion.div
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+    <motion.div 
+      whileHover={{ y: -8 }}
       onClick={onClick}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="group relative bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-[2.5rem] overflow-hidden shadow-sm hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500 flex flex-col h-full"
+      className="group cursor-pointer bg-white dark:bg-slate-900 rounded-[2.5rem] overflow-hidden border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500"
     >
-      {/* IMAGE SECTION */}
-      <div className="relative w-full aspect-[4/3] overflow-hidden">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={mainIndex}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="w-full h-full"
-          >
-            <Image
-              src={urls[mainIndex] || "/no-image.png"}
-              alt={listing.title}
-              fill
-              className="object-cover transition-transform duration-700 group-hover:scale-110"
-              sizes="(max-width: 768px) 100vw, 50vw"
-            />
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Overlay Gradients */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60" />
-
-        {/* Navigation Arrows (только при ховере) */}
-        {urls.length > 1 && isHovered && (
-          <div className="absolute inset-0 flex items-center justify-between px-4 z-10">
-            <button 
-              onClick={prevImg}
-              className="p-2 bg-white/20 backdrop-blur-md hover:bg-white/40 text-white rounded-full transition-all active:scale-90"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            <button 
-              onClick={nextImg}
-              className="p-2 bg-white/20 backdrop-blur-md hover:bg-white/40 text-white rounded-full transition-all active:scale-90"
-            >
-              <ChevronRight size={20} />
-            </button>
+      {/* Изображение и Бэйджи */}
+      <div className="relative aspect-[4/5] overflow-hidden">
+        <img 
+          src={actualListing?.image_url || "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267"} 
+          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+          alt={profile.full_name}
+        />
+        
+        {/* Плашка автора (Студента) */}
+        <div className="absolute top-5 left-5 right-5 flex justify-between items-start">
+          <div className="flex items-center gap-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md p-2 pr-4 rounded-2xl shadow-xl">
+            <div className="w-8 h-8 rounded-xl bg-indigo-500 flex items-center justify-center text-white overflow-hidden">
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-xs font-black">{profile?.full_name?.charAt(0)}</span>
+              )}
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-slate-900 dark:text-white leading-none">
+                {profile?.full_name || "Студент"}
+              </p>
+              <p className="text-[8px] text-indigo-500 font-bold uppercase tracking-wider">
+                {profile?.university || "ВУЗ не указан"}
+              </p>
+            </div>
           </div>
-        )}
 
-        {/* Like Button */}
-        <button 
-          onClick={(e) => { e.stopPropagation(); /* Добавь логику избранного здесь */ }}
-          className="absolute top-5 right-5 z-20 p-2.5 bg-white/10 backdrop-blur-lg hover:bg-red-500 rounded-full text-white transition-all group/heart active:scale-95"
-        >
-          <Heart size={20} className="group-hover/heart:fill-current" />
-        </button>
-
-        {/* Indicators (Dots) */}
-        {urls.length > 1 && (
-          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-1.5 z-20">
-            {urls.map((_: any, i: number) => (
-              <div 
-                key={i}
-                className={`h-1.5 rounded-full transition-all duration-300 ${
-                  i === mainIndex ? "w-6 bg-white" : "w-1.5 bg-white/50"
-                }`}
-              />
-            ))}
+          <div className="bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black italic shadow-lg shadow-indigo-500/40">
+            MATCH
           </div>
-        )}
+        </div>
+
+        {/* Градиент снизу */}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent opacity-60" />
+        
+        {/* Цена (Исправлено: защита от undefined) */}
+        <div className="absolute bottom-6 left-6 text-white">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-80 mb-1">Бюджет / Месяц</p>
+          <p className="text-3xl font-black italic tracking-tighter">
+            {displayPrice.toLocaleString("ru-RU")} ₸
+          </p>
+        </div>
       </div>
 
-      {/* CONTENT SECTION */}
-      <div className="p-6 space-y-4 flex-1 flex flex-col">
-        <div className="flex justify-between items-start gap-4">
-          <h3 className="text-xl font-black uppercase tracking-tight text-gray-900 dark:text-white line-clamp-1 flex-1 leading-tight">
-            {listing.title}
+      {/* Контент под фото */}
+      <div className="p-6 space-y-4">
+        <div>
+          <h3 className="text-lg font-black text-slate-900 dark:text-white leading-tight mb-2 line-clamp-1">
+            {actualListing?.title || `Поиск сожителя: ${profile.full_name}`}
           </h3>
-          <div className="text-indigo-600 dark:text-indigo-400 font-black text-xl whitespace-nowrap">
-            {formatPrice(listing.price)}
+          <div className="flex items-center gap-1.5 text-slate-400 text-xs font-bold">
+            <MapPin size={14} className="text-indigo-500" />
+            {actualListing?.address || "Район не указан"}
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-gray-500 dark:text-slate-400">
-          <MapPin size={16} className="text-indigo-500" />
-          <span className="text-sm font-bold truncate uppercase tracking-wider">
-            {listing.district || listing.city || "Алматы"}
-          </span>
-        </div>
-
-        {/* Features / Badges (Soft Premium Style) */}
-        <div className="pt-5 mt-auto flex flex-wrap gap-2 border-t border-gray-100 dark:border-slate-800">
-          {/* Комнаты - исправлено! */}
-          <div className="px-4 py-1.5 bg-indigo-50/50 dark:bg-indigo-900/20 rounded-xl text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest border border-indigo-100/50 dark:border-indigo-900/30">
-            {listing.rooms || 1} {getRoomWord(listing.rooms || 1)}
-          </div>
-
-          {/* Тип жилья - исправлено! */}
-          <div className="px-4 py-1.5 bg-emerald-50/50 dark:bg-emerald-900/20 rounded-xl text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest border border-emerald-100/50 dark:border-emerald-900/30">
-            {listing.property_type === 'house' ? 'Дом' : 'Квартира'}
-          </div>
-
-          {/* Площадь */}
-          {listing.area_total && (
-             <div className="px-4 py-1.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest border border-slate-100 dark:border-slate-800">
-                {listing.area_total} м²
-             </div>
+        {/* Студенческие теги */}
+        <div className="flex flex-wrap gap-2 pt-2">
+          {profile?.schedule_type === 'morning' && (
+            <Tag icon={<Sun size={12} />} text="Жаворонок" color="amber" />
           )}
+          {profile?.schedule_type === 'evening' && (
+            <Tag icon={<Moon size={12} />} text="Сова" color="indigo" />
+          )}
+          {profile?.cleanliness_level > 3 && (
+            <Tag icon={<Sparkles size={12} />} text="Чистюля" color="emerald" />
+          )}
+          <Tag icon={<GraduationCap size={12} />} text={profile?.faculty || "Студент"} color="slate" />
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function Tag({ icon, text, color }: any) {
+  const colors: any = {
+    amber: "bg-amber-50 text-amber-600 dark:bg-amber-500/10",
+    indigo: "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10",
+    emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10",
+    slate: "bg-slate-50 text-slate-600 dark:bg-slate-500/10",
+  };
+  return (
+    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider ${colors[color]}`}>
+      {icon} {text}
+    </div>
   );
 }

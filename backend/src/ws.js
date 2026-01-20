@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "/supabaseAdmin.js";
+import { supabaseAdmin } from "./supabaseAdmin.js";
 
 export function initRealtime(io) {
   io.use(async (socket, next) => {

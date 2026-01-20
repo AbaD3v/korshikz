@@ -22,37 +22,23 @@ import EditProfileForm from "../../components/EditProfileForm";
 /* --- Типы данных --- */
 export type ProfilePublicData = {
   id: string;
-  full_name?: string | null;
-  email?: string | null;
+  full_name: string;
+  university: string;
+  faculty: string;
+  about_me: string;
+  budget: number;
+  status: string;
+  cleanliness_level: number;
+  noise_tolerance: number;
+  schedule_type: string;
+  preferred_location: string;
   avatar_url?: string | null;
-  birthday?: string | null;
-  city?: string | null;
-  university?: string | null;
-  faculty?: string | null;
-  course?: number | null;
-  study_type?: string | null;
-  is_student?: boolean | null;
-  budget_min?: number | null;
-  budget_max?: number | null;
-  preferred_location?: string | null;
-  need_furnished?: boolean | null;
-  room_type?: string | null;
-  wake_time?: string | null;
-  sleep_time?: string | null;
-  cleanliness_level?: number | null;
-  noise_tolerance?: number | null;
-  introvert_extrovert?: string | null;
-  lifestyle?: string | null;
-  smoking?: boolean | null;
-  pets?: boolean | null;
-  hobbies?: string | null;
-  bio?: string | null;
-  preferred_gender?: string | null;
-  preferred_age_min?: number | null;
-  preferred_age_max?: number | null;
-  preferred_pets?: boolean | null;
-  preferred_smoking?: boolean | null;
-  about_me?: string | null;
+  // Поля предпочтений (Match preferences)
+  preferred_gender: string;
+  preferred_age_min: number;
+  preferred_age_max: number;
+  preferred_pets: boolean;
+  preferred_smoking: boolean;
 };
 
 export type Listing = { 
@@ -229,48 +215,48 @@ export default function ProfilePage({ initialProfile, initialListings, isOwner }
 }
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
-  const id = context.params?.id;
+  const { id } = context.params || {};
+
   if (!id || Array.isArray(id)) {
     return { props: { initialProfile: null, initialListings: [], isOwner: false } };
   }
 
-  const supabaseServer = createSupabase(
-    process.env.NEXT_PUBLIC_SUPABASE_URL, 
-    process.env.SUPABASE_SERVICE_ROLE_KEY
+  const supabaseServer = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || ''
   );
 
-  if (!supabaseServer) {
-    return { props: { initialProfile: null, initialListings: [], isOwner: false } };
-  }
-
-  const selectFields = `
-    id, full_name, email, avatar_url, birthday, city, university, faculty, course, 
-    study_type, is_student, budget_min, budget_max, preferred_location, 
-    need_furnished, room_type, wake_time, sleep_time, cleanliness_level, 
-    noise_tolerance, introvert_extrovert, lifestyle, smoking, pets, 
-    hobbies, bio, preferred_gender, preferred_age_min, preferred_age_max, 
-    preferred_pets, preferred_smoking, about_me
-  `;
-
-  // Получаем профиль
-  const { data: profile } = await supabaseServer
+  // 1. Пробуем получить профиль максимально просто
+  const { data: profile, error: profileError } = await supabaseServer
     .from("profiles")
-    .select(selectFields)
+    .select("*")
     .eq("id", id)
     .maybeSingle();
 
-  // Получаем объявления
-  const { data: listings } = await supabaseServer
+  if (profileError) {
+    console.error("Ошибка при загрузке профиля:", profileError.message);
+  }
+
+  // 2. Получаем объявления
+  const { data: listings, error: listingsError } = await supabaseServer
     .from("listings")
     .select("*")
     .eq("user_id", id)
     .order("id", { ascending: false });
 
+  if (listingsError) {
+    console.error("Ошибка при загрузке объявлений:", listingsError.message);
+  }
+
+  // Временная проверка владельца (если есть куки сессии)
+  // Для начала оставим false, пока не починим отображение
+  const isOwner = false; 
+
   return {
     props: {
-      initialProfile: profile ?? null,
-      initialListings: listings ?? [],
-      isOwner: false, // Эту логику нужно будет дополнить проверкой сессии (см. рекомендации ранее)
+      initialProfile: profile || null,
+      initialListings: listings || [],
+      isOwner,
     },
   };
 };
