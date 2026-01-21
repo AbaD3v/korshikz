@@ -107,10 +107,10 @@ export default async function handler(req, res) {
     <a href="https://korshikz.space" class="logo">Korshi.kz</a>
     
     <div class="card">
-      <h1>Подтвердите ваш email</h1>
+      <h1>Подтвердите вашу почту</h1>
       <p>Рады видеть вас в Korshi.kz! Чтобы активировать ваш аккаунт и начать пользоваться сервисом, нажмите на кнопку ниже.</p>
       
-      <a href="${confirmationUrl}" class="button">Подтвердить аккаунт</a>
+      <a href="${confirmationUrl}" class="button">Подтвердить почту</a>
       
       <p style="margin-top: 25px; font-size: 14px; color: #888;">
         Ссылка действительна в течение 24 часов.
