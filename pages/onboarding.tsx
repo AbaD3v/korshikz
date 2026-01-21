@@ -25,7 +25,6 @@ const STATUS_MAP: Record<number, string> = {
   3: "free_spot",
   4: "inactive"
 };
-
 export default function OnboardingPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
