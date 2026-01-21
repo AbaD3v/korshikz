@@ -26,7 +26,6 @@ const STATUS_MAP: Record<number, string> = {
   3: "free_spot",   // Ищу на подселение
   4: "inactive"     // Не ищу
 };
-
 export default function OnboardingPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -139,13 +138,11 @@ const createAutoListing = async () => {
     console.error("Пользователь не авторизован");
     return;
   }
-
   const STATUS_MAP = {
     1: "searching",
     2: "have_flat",
     3: "free_spot"
   };
-
   const payload = {
     user_id: userId,
     status: STATUS_MAP[form.status] || "searching",
@@ -167,7 +164,6 @@ const createAutoListing = async () => {
     if (!response.ok) throw new Error('Ошибка при синхронизации');
     
     console.log("Успешно сохранено!");
-    router.push('/listings'); // Перенаправляем на страницу объявлений
   } catch (err) {
     console.error("Ошибка сохранения листинга:", err);
   }
