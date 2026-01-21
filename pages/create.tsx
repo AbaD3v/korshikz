@@ -247,6 +247,7 @@ export default function CreateListingPage({ city: globalCity }: { city: string }
             <div className="h-80 rounded-[3rem] overflow-hidden border-4 border-slate-100 dark:border-slate-800 relative">
               <ListingMap 
                 listings={formData.lat ? [{ ...formData, id: 'temp' }] : []} 
+                onMarkerClick={() => {}} // Добавь эту строчку
                 key={formData.lat ? `map-${formData.lat}-${formData.lng}` : 'empty'}
               />
               {!formData.lat && (

@@ -19,12 +19,11 @@ const STEPS = [
   { id: 6, title: "О себе", icon: Info },
 ];
 
-// Тот самый маппинг для исправления ошибки Enum
 const STATUS_MAP: Record<number, string> = {
-  1: "searching",   // Ищу сожителей
-  2: "have_flat",   // Есть квартира
-  3: "free_spot",   // Ищу на подселение
-  4: "inactive"     // Не ищу
+  1: "searching",
+  2: "have_flat",
+  3: "free_spot",
+  4: "inactive"
 };
 
 export default function OnboardingPage() {
@@ -36,11 +35,15 @@ export default function OnboardingPage() {
   const [isFinished, setIsFinished] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+
   const [form, setForm] = useState<any>({
     full_name: "",
+    age: 20,
     university: "",
     city: "Алматы",
-    status: 1, // Внутреннее состояние (цифра)
+    status: 1, 
     budget: 120000,
     cleanliness_level: 3,
     noise_tolerance: 3,
@@ -55,9 +58,8 @@ export default function OnboardingPage() {
     preferred_smoking: false,
     about_me: "",
     isOnboarded: false,
+    phone: ""
   });
-  
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -74,7 +76,6 @@ export default function OnboardingPage() {
 
       if (profile) {
         if (profile.isOnboarded) return router.replace(`/profile/${user.id}`);
-        // Если в базе уже лежит строка (напр. 'searching'), конвертируем обратно в цифру для формы
         const numericStatus = Object.keys(STATUS_MAP).find(key => STATUS_MAP[Number(key)] === profile.status);
         setForm((prev: any) => ({ 
           ...prev, 
@@ -99,13 +100,33 @@ export default function OnboardingPage() {
     if (isLast) {
       setSaving(true);
       try {
-        // ПРЕОБРАЗОВАНИЕ ПЕРЕД СОХРАНЕНИЕМ
+        let finalAvatarUrl = form.avatar_url;
+
+        if (avatarFile && userId) {
+          const fileExt = avatarFile.name.split('.').pop();
+          const fileName = `${userId}-${Date.now()}.${fileExt}`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from('avatars')
+            .upload(fileName, avatarFile, { upsert: true });
+
+          if (uploadError) throw uploadError;
+
+          const { data: publicUrlData } = supabase.storage
+            .from('avatars')
+            .getPublicUrl(fileName);
+          
+          finalAvatarUrl = publicUrlData.publicUrl;
+        }
+
         const finalPayload = {
           ...form,
           id: userId,
+          avatar_url: finalAvatarUrl,
           isOnboarded: true,
-          status: STATUS_MAP[form.status] || "searching", // Ключевое исправление Enum
+          status: STATUS_MAP[form.status] || "searching",
           budget: Number(form.budget),
+          age: form.age ? Number(form.age) : null,
           cleanliness_level: Number(form.cleanliness_level),
           noise_tolerance: Number(form.noise_tolerance)
         };
@@ -113,9 +134,8 @@ export default function OnboardingPage() {
         const { error } = await supabase.from("profiles").upsert(finalPayload);
         if (error) throw error;
 
-        // Авто-листинг для карты
         if (form.status === 1 || form.status === 2) {
-          await createAutoListing();
+          await createAutoListing(finalAvatarUrl);
         }
 
         setIsFinished(true);
@@ -131,47 +151,32 @@ export default function OnboardingPage() {
     }
   };
 
-const createAutoListing = async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  const userId = session?.user?.id;
+  const createAutoListing = async (avatarUrl?: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id;
+    if (!userId) return;
 
-  if (!userId) {
-    console.error("Пользователь не авторизован");
-    return;
-  }
+    const payload = {
+      user_id: userId,
+      status: STATUS_MAP[form.status] || "searching",
+      full_name: form.full_name,
+      university: form.university,
+      address: form.preferred_location || form.university || "Алматы",
+      city: form.city || "Алматы",
+      price: Number(form.budget) || 0,
+      image_url: avatarUrl
+    };
 
-  const STATUS_MAP = {
-    1: "searching",
-    2: "have_flat",
-    3: "free_spot"
+    try {
+      await fetch('/api/listings/sync', {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch (err) {
+      console.error("Ошибка синхронизации листинга:", err);
+    }
   };
-
-  const payload = {
-    user_id: userId,
-    status: STATUS_MAP[form.status] || "searching",
-    full_name: form.full_name,
-    university: form.university,
-    // Передаем адрес строкой, сервер сам найдет координаты
-    address: form.preferred_location || form.university || "Алматы",
-    city: form.city || "Алматы",
-    price: Number(form.budget) || 0
-  };
-
-  try {
-    const response = await fetch('/api/listings/sync', {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) throw new Error('Ошибка при синхронизации');
-    
-    console.log("Успешно сохранено!");
-    router.push('/listings'); // Перенаправляем на страницу объявлений
-  } catch (err) {
-    console.error("Ошибка сохранения листинга:", err);
-  }
-};
 
   if (!mounted || loading) return null;
 
@@ -179,7 +184,11 @@ const createAutoListing = async () => {
     <div className="min-h-screen bg-[#FDFDFF] dark:bg-[#020617] p-6 md:p-12 text-slate-900 dark:text-white">
       <AnimatePresence>
         {isFinished && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-white dark:bg-[#020617]">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, filter: "blur(10px)" }} 
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }} 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 dark:bg-slate-950/80 backdrop-blur-md"
+          >
             <div className="text-center space-y-6">
               <div className="mx-auto w-20 h-20 bg-indigo-500 rounded-full flex items-center justify-center shadow-xl shadow-indigo-500/40">
                 <Check size={40} className="text-white" strokeWidth={3} />
@@ -210,20 +219,38 @@ const createAutoListing = async () => {
               {step === 1 && (
                 <div className="grid md:grid-cols-2 gap-8 items-center">
                   <div className="space-y-6">
-                    <InputGroup label="Твое имя">
-                      <input value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})} placeholder="Имя" className="premium-input" />
+                    <div className="grid grid-cols-4 gap-4">
+                      <div className="col-span-3">
+                        <InputGroup label="Твое имя">
+                          <input value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})} placeholder="Имя" className="premium-input" />
+                        </InputGroup>
+                      </div>
+                      <div className="col-span-1">
+                        <InputGroup label="Возраст">
+                          <input type="number" value={form.age} onChange={e => setForm({...form, age: e.target.value})} placeholder="20" className="premium-input text-center" />
+                        </InputGroup>
+                      </div>
+                    </div>
+                    <InputGroup label="Номер телефона">
+                      <input type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} placeholder="+7 (707) 000-00-00" className="premium-input" />
                     </InputGroup>
                     <InputGroup label="Твой Университет">
-                      <div className="relative">
-                        <GraduationCap className="absolute left-5 top-1/2 -translate-y-1/2 text-indigo-500" size={20} />
-                        <input value={form.university} onChange={e => setForm({...form, university: e.target.value})} placeholder="Напр: КБТУ" className="premium-input pl-14" />
+                      <div className="relative flex items-center">
+                        <GraduationCap className="absolute left-5 text-indigo-500 pointer-events-none z-10" size={20} />
+                        <input value={form.university} onChange={e => setForm({...form, university: e.target.value})} placeholder="Напр: AIU" style={{ paddingLeft: '3.5rem' }} className="premium-input w-full" />
                       </div>
                     </InputGroup>
                   </div>
                   <div className="flex justify-center">
                     <div className="relative w-40 h-40 rounded-[3rem] bg-slate-100 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center overflow-hidden group">
                       {avatarPreview ? <img src={avatarPreview} className="w-full h-full object-cover" alt="Avatar" /> : <Camera className="text-slate-400" size={32} />}
-                      <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => e.target.files?.[0] && setAvatarPreview(URL.createObjectURL(e.target.files[0]))} />
+                      <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setAvatarFile(file);
+                          setAvatarPreview(URL.createObjectURL(file));
+                        }
+                      }} />
                     </div>
                   </div>
                 </div>
@@ -233,27 +260,9 @@ const createAutoListing = async () => {
                 <div className="grid md:grid-cols-2 gap-10">
                   <InputGroup label="Режим дня">
                     <div className="space-y-4">
-                      <OptionCard 
-                        active={form.schedule_type === 'morning'} 
-                        icon={<Sun />} 
-                        label="Жаворонок" 
-                        desc="Просыпаюсь рано, ложусь рано."
-                        onClick={() => setForm({...form, schedule_type: 'morning'})} 
-                      />
-                      <OptionCard 
-                        active={form.schedule_type === 'evening'} 
-                        icon={<Moon />} 
-                        label="Сова" 
-                        desc="Активен ночью, люблю поспать подольше."
-                        onClick={() => setForm({...form, schedule_type: 'evening'})} 
-                      />
-                      <OptionCard 
-                        active={form.schedule_type === 'flexible'} 
-                        icon={<Coffee />} 
-                        label="Гибкий график" 
-                        desc="Всегда по-разному."
-                        onClick={() => setForm({...form, schedule_type: 'flexible'})} 
-                      />
+                      <OptionCard active={form.schedule_type === 'morning'} icon={<Sun />} label="Жаворонок" desc="Просыпаюсь рано, ложусь рано." onClick={() => setForm({...form, schedule_type: 'morning'})} />
+                      <OptionCard active={form.schedule_type === 'evening'} icon={<Moon />} label="Сова" desc="Активен ночью, люблю поспать подольше." onClick={() => setForm({...form, schedule_type: 'evening'})} />
+                      <OptionCard active={form.schedule_type === 'flexible'} icon={<Coffee />} label="Гибкий график" desc="Всегда по-разному." onClick={() => setForm({...form, schedule_type: 'flexible'})} />
                     </div>
                   </InputGroup>
                   <div className="space-y-10 bg-indigo-500/5 p-8 rounded-[2.5rem]">
@@ -271,27 +280,9 @@ const createAutoListing = async () => {
                 <div className="space-y-10">
                   <InputGroup label="Твоя ситуация">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                      <OptionCard 
-                        active={form.status === 1} 
-                        icon={<Users2 />} 
-                        label="Ищу сожителей" 
-                        desc="Нет жилья, ищу компанию для совместной аренды."
-                        onClick={() => setForm({...form, status: 1})} 
-                      />
-                      <OptionCard 
-                        active={form.status === 2} 
-                        icon={<Home />} 
-                        label="Ищу к себе" 
-                        desc="Есть квартира, нужен сосед."
-                        onClick={() => setForm({...form, status: 2})} 
-                      />
-                      <OptionCard 
-                        active={form.status === 3} 
-                        icon={<Check />} 
-                        label="Уже с жильем" 
-                        desc="Просто хочу быть в комьюнити."
-                        onClick={() => setForm({...form, status: 3})} 
-                      />
+                      <OptionCard active={form.status === 1} icon={<Users2 />} label="Ищу сожителей" desc="Нет жилья, ищу компанию." onClick={() => setForm({...form, status: 1})} />
+                      <OptionCard active={form.status === 2} icon={<Home />} label="Ищу к себе" desc="Есть квартира, нужен сосед." onClick={() => setForm({...form, status: 2})} />
+                      <OptionCard active={form.status === 3} icon={<Check />} label="Уже с жильем" desc="Просто в комьюнити." onClick={() => setForm({...form, status: 3})} />
                     </div>
                   </InputGroup>
                   <div className="grid grid-cols-2 gap-6">
@@ -307,15 +298,21 @@ const createAutoListing = async () => {
 
               {step === 4 && (
                 <div className="max-w-2xl mx-auto space-y-12">
-                  <div className="text-center">
+                  <div className="grid grid-cols-2 gap-4">
+                    <InputGroup label="Город">
+                      <select value={form.city} onChange={e => setForm({...form, city: e.target.value})} className="premium-input bg-white dark:bg-slate-900">
+                        <option value="Алматы">Алматы</option>
+                        <option value="Астана">Астана</option>
+                      </select>
+                    </InputGroup>
                     <InputGroup label="Месячный бюджет (₸)">
-                      <input type="number" value={form.budget} onChange={e => setForm({...form, budget: e.target.value})} className="premium-input text-5xl text-center text-indigo-500 font-black" />
+                      <input type="number" value={form.budget} onChange={e => setForm({...form, budget: e.target.value})} className="premium-input text-indigo-500 font-black" />
                     </InputGroup>
                   </div>
                   <InputGroup label="Желаемая локация">
-                    <div className="relative">
-                      <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-indigo-500" size={20} />
-                      <input value={form.preferred_location} onChange={e => setForm({...form, preferred_location: e.target.value})} placeholder="Район или ЖК" className="premium-input pl-14" />
+                    <div className="relative flex items-center">
+                      <MapPin className="absolute left-5 text-indigo-500 pointer-events-none" size={20} />
+                      <input value={form.preferred_location} onChange={e => setForm({...form, preferred_location: e.target.value})} placeholder="Район или ЖК" className="premium-input w-full" style={{ paddingLeft: '3.5rem' }} />
                     </div>
                   </InputGroup>
                 </div>
@@ -362,7 +359,7 @@ const createAutoListing = async () => {
           </button>
           
           <button onClick={handleNext} disabled={saving} className="px-10 py-5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-full font-black uppercase text-xs tracking-widest shadow-xl hover:scale-105 transition-all active:scale-95">
-            {saving ? "Сохранение..." : step === 6 ? "Готово" : "Далее"}
+            {saving ? "Загрузка..." : step === 6 ? "Готово" : "Далее"}
           </button>
         </footer>
       </div>
@@ -395,12 +392,13 @@ function InputGroup({ label, children }: any) {
 
 function OptionCard({ active, onClick, label, desc, icon }: any) {
   return (
-    <button 
+    <motion.button 
+      whileTap={{ scale: 0.97 }}
       onClick={onClick} 
       className={`w-full flex flex-col items-start gap-2.5 p-5 rounded-[1.8rem] border-2 transition-all text-left ${
         active 
-          ? "border-indigo-500 bg-indigo-500 text-white shadow-lg shadow-indigo-500/15" 
-          : "border-slate-100 dark:border-slate-800/50 text-slate-500 hover:border-indigo-100 dark:hover:border-indigo-900/30"
+          ? "border-indigo-500 bg-indigo-500 text-white shadow-xl shadow-indigo-500/25 scale-[1.02]" 
+          : "border-slate-100 dark:border-slate-800/50 text-slate-500 hover:border-indigo-200 dark:hover:border-indigo-800/30 bg-white/50 dark:bg-slate-900/50"
       }`}
     >
       <div className={`p-2.5 rounded-xl ${active ? "bg-white/20 text-white" : "bg-indigo-50 text-indigo-500 dark:bg-indigo-500/10"}`}>
@@ -410,7 +408,7 @@ function OptionCard({ active, onClick, label, desc, icon }: any) {
         <div className="font-black uppercase text-[10px] tracking-widest mb-0.5">{label}</div>
         {desc && <div className={`text-[9px] leading-tight font-medium ${active ? "text-white/70" : "text-slate-400"}`}>{desc}</div>}
       </div>
-    </button>
+    </motion.button>
   );
 }
 

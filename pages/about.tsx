@@ -1,21 +1,19 @@
 "use client";
 
-import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
-import { FaLinkedin, FaGithub, FaSearch, FaExternalLinkAlt, FaSortAlphaDown, FaSortAlphaUp, FaSteam } from "react-icons/fa";
-import { Sparkles, Code2, Rocket, Heart, ShieldCheck, Mail } from "lucide-react";
+import React, { useState } from "react";
+import { FaLinkedin, FaGithub, FaSteam } from "react-icons/fa";
+import { Sparkles, Code2, Rocket, Heart, Globe, Cpu, Zap, X, ShieldCheck} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// --- ТИПЫ И ДАННЫЕ (Твои оригинальные данные) ---
-type Social = { linkedin?: string; github?: string; steam?: string };
-type Dev = { name: string; role: string; bio?: string; photo?: string; social?: Social; isLead?: boolean };
-
-const DEFAULT_DEVS: Dev[] = [
+// --- ДАННЫЕ ---
+const DEFAULT_DEVS = [
   {
     name: "Маметжан Абзал",
-    isLead: true, // Добавил флаг для визуального выделения
-    role: "Fullstack Developer | DevOps | UI/UX Designer | Project Lead",
-    bio: "Привет! Я Абзал, создатель Korshi.kz. Я прошел путь от первой строчки кода до настройки DNS и AI-интеграций. Моя цель — создать продукт, который реально решает проблему дорогих аренд квартир в большом городе Казахстана.",
+    isLead: true,
+    role: "Lead Developer | UI Designer",
+    bio: "Создатель Korshi.kz. Прошел путь от идеи на салфетке до полноценной платформы. Верю, что технологии должны упрощать жизнь, а не усложнять её.",
     photo: "https://github.com/AbaD3v.png",
+    skills: ["Next.js", "System Design", "UI/UX"],
     social: {
       linkedin: "https://www.linkedin.com/in/abzal-mametzhan-63264a388/",
       github: "https://github.com/AbaD3v",
@@ -24,9 +22,10 @@ const DEFAULT_DEVS: Dev[] = [
   },
   {
     name: "Болатов Диас",
-    role: "CTO & Co-Founder | QA Engineer | UI Assistant",
-    bio: "Привет! Я Диас. Я слежу за тем, чтобы техническая часть Korshi работала как часы. Моя работа — тестирование, поддержка пользователей и доведение интерфейса до идеала. Всегда открыт к фидбеку!",
+    role: "CTO | QA Engineer",
+    bio: "Слежу за тем, чтобы каждая кнопка работала, а данные были в безопасности. Ответственный за стабильность и качество пользовательского опыта.",
     photo: "https://github.com/DiasD3v.png",
+    skills: ["Testing", "Security", "Backend"],
     social: {
       linkedin: "https://www.linkedin.com/in/%D0%B1%D0%BE%D0%BB%D0%B0%D1%82%D0%BE%D0%B2-%D0%B4%D0%B8%D0%B0%D1%81-282a5b39a/",
       github: "https://github.com/DiasD3v",
@@ -35,166 +34,179 @@ const DEFAULT_DEVS: Dev[] = [
   },
 ];
 
-// --- ВСПОМОГАТЕЛЬНЫЕ КОМПОНЕНТЫ (Стиль обновлен) ---
-
-const Avatar = ({ src, name, size = 150, isLead }: { src?: string; name: string; size?: number; isLead?: boolean }) => {
-  return (
-    <div className={`relative p-1 rounded-full ${isLead ? 'bg-gradient-to-tr from-indigo-500 to-purple-500' : 'bg-slate-200 dark:bg-slate-800'}`}>
+const Avatar = ({ src, name, size = 160, isLead }: any) => (
+  <div className="relative group">
+    <div className={`absolute inset-0 rounded-full blur-2xl opacity-20 group-hover:opacity-40 transition-opacity ${isLead ? 'bg-indigo-500' : 'bg-blue-500'}`} />
+    <div className={`relative p-1.5 rounded-full ${isLead ? 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-blue-500' : 'bg-slate-200 dark:bg-slate-800'}`}>
       <img
         src={src || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`}
         alt={name}
-        className="rounded-full object-cover bg-white dark:bg-slate-900"
+        className="rounded-full object-cover bg-white dark:bg-slate-950"
         style={{ width: size, height: size }}
       />
-      {isLead && (
-        <div className="absolute -top-2 -right-2 bg-indigo-500 text-white p-2 rounded-full shadow-lg">
-          <Sparkles size={16} />
-        </div>
-      )}
     </div>
-  );
-};
+    {isLead && (
+      <motion.div 
+        animate={{ rotate: [0, 15, -15, 0] }}
+        transition={{ repeat: Infinity, duration: 4 }}
+        className="absolute -top-1 -right-1 bg-indigo-600 text-white p-2.5 rounded-full shadow-xl border-4 border-white dark:border-[#020617]"
+      >
+        <Sparkles size={18} />
+      </motion.div>
+    )}
+  </div>
+);
 
 export default function About() {
-  const [selected, setSelected] = useState<Dev | null>(null);
-  
+  const [selected, setSelected] = useState<any>(null);
+
   return (
-    <div className="min-h-screen bg-[#FDFDFF] dark:bg-[#020617] text-slate-900 dark:text-white pt-32 pb-20 px-6">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-[#FDFDFF] dark:bg-[#020617] text-slate-900 dark:text-white pt-40 pb-20 px-6 selection:bg-indigo-500 selection:text-white">
+      <div className="max-w-7xl mx-auto">
         
-        {/* --- HEADER / MANIFESTO --- */}
-        <header className="text-center mb-24">
+        {/* --- HEADER --- */}
+        <header className="max-w-4xl mb-32">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/5 border border-indigo-500/10 text-indigo-500 text-[10px] font-black uppercase tracking-[0.2em] mb-6"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center gap-3 text-indigo-500 font-black uppercase tracking-[0.3em] text-[10px] mb-8"
           >
-            Behind the Scenes
+            <span className="w-12 h-[2px] bg-indigo-500" /> Crew & Vision
           </motion.div>
           
           <motion.h1 
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter leading-none mb-8"
+            className="text-6xl md:text-8xl font-[1000] italic uppercase tracking-[-0.05em] leading-[0.85] mb-10"
           >
-            Мы создаем <span className="text-indigo-600 underline decoration-indigo-200">Korshi</span> <br />
-            вдвоем. С душой.
+            МЫ СТРОИМ <br /> 
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-500">БУДУЩЕЕ</span> <br />
+            АРЕНДЫ ВМЕСТЕ.
           </motion.h1>
 
           <motion.p 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
-            className="text-xl text-slate-500 dark:text-slate-400 max-w-2xl mx-auto font-medium"
+            className="text-xl md:text-2xl text-slate-500 dark:text-slate-400 font-medium leading-relaxed"
           >
-            Korshi.kz — это не просто код. Это проект двух единомышленников, которые верят, что поиск жилья в Казахстане может быть прозрачным и дружелюбным.
+            Korshi.kz — это проект двух студентов, которые устали от проблемного поиска жилья. Мы создаем платформу, где важен человек, а не только квадратные метры.
           </motion.p>
         </header>
 
-        {/* --- FOUNDERS GRID --- */}
-        <div className="grid md:grid-cols-2 gap-8 mb-32">
+        {/* --- FOUNDERS --- */}
+        <div className="grid md:grid-cols-2 gap-10 mb-40">
           {DEFAULT_DEVS.map((dev, idx) => (
             <motion.div
               key={dev.name}
-              initial={{ opacity: 0, x: idx === 0 ? -50 : 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              whileHover={{ y: -10 }}
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: idx * 0.1 }}
               onClick={() => setSelected(dev)}
-              className="group cursor-pointer relative p-8 md:p-12 rounded-[3rem] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 hover:border-indigo-500/30 transition-all shadow-sm hover:shadow-2xl overflow-hidden"
+              className="group cursor-pointer relative p-10 md:p-14 rounded-[4rem] bg-white dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/50 hover:border-indigo-500/30 transition-all shadow-sm hover:shadow-2xl overflow-hidden backdrop-blur-sm"
             >
-              {/* Background Glow */}
-              <div className={`absolute -top-24 -right-24 w-64 h-64 blur-[80px] rounded-full opacity-10 ${dev.isLead ? 'bg-indigo-500' : 'bg-blue-500'}`} />
-
               <div className="relative z-10 flex flex-col items-center text-center">
                 <Avatar src={dev.photo} name={dev.name} isLead={dev.isLead} />
                 
-                <h2 className="mt-8 text-3xl font-black italic uppercase tracking-tighter">
+                <h2 className="mt-10 text-4xl font-black italic uppercase tracking-tighter group-hover:text-indigo-500 transition-colors">
                   {dev.name}
                 </h2>
-                
-                <div className="mt-4 flex flex-wrap justify-center gap-2">
-                  {dev.role.split('|').map((r, i) => (
-                    <span key={i} className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase tracking-wider rounded-full text-slate-500 dark:text-slate-400">
-                      {r.trim()}
-                    </span>
-                  ))}
-                </div>
+                <p className="mt-3 text-indigo-500/80 font-bold uppercase tracking-widest text-xs">
+                  {dev.role.split('|')[0]}
+                </p>
 
-                <p className="mt-6 text-slate-600 dark:text-slate-400 font-medium leading-relaxed line-clamp-3">
+                <p className="mt-8 text-slate-500 dark:text-slate-400 font-medium leading-relaxed max-w-sm">
                   {dev.bio}
                 </p>
 
-                <div className="mt-8 flex gap-4">
-                   <button className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-indigo-500 hover:text-indigo-600 transition-colors">
-                     View More <FaExternalLinkAlt size={10} />
-                   </button>
+                <div className="mt-10 flex gap-3">
+                  {dev.skills.map(skill => (
+                    <span key={skill} className="px-4 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                      {skill}
+                    </span>
+                  ))}
                 </div>
               </div>
             </motion.div>
           ))}
         </div>
 
-        {/* --- TECH STACK SECTION --- */}
-        <section className="py-20 border-t border-slate-100 dark:border-slate-800">
-          <div className="text-center mb-16">
-            <h3 className="text-2xl font-black italic uppercase tracking-tighter">Our Weapon of Choice</h3>
+        {/* --- STACK --- */}
+        <section className="py-32 border-t border-slate-100 dark:border-slate-900">
+          <div className="flex flex-col md:flex-row justify-between items-end mb-20 gap-8">
+            <div className="max-w-xl">
+              <h3 className="text-4xl md:text-6xl font-black italic uppercase tracking-tighter">Наш Стек</h3>
+              <p className="text-slate-500 mt-4 font-medium text-lg">Используем самые современные инструменты для быстрой и безопасной работы сервиса.</p>
+            </div>
+            <Zap className="text-indigo-500 hidden md:block" size={60} />
           </div>
-          <div className="grid grid-cols-3 md:grid-cols-4 gap-4">
-             {['Next.js 14', 'Supabase', 'Tailwind CSS', 'Framer Motion', 'Vercel', 'Resend', 'YandexMaps', "Трудолюбие"].map((tech) => (
-               <div key={tech} className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 text-center font-bold text-slate-400">
-                 {tech}
-               </div>
-             ))}
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {[
+              { name: 'Next.js 15', icon: <Globe size={20} /> },
+              { name: 'Supabase', icon: <ShieldCheck size={20} /> },
+              { name: 'Tailwind', icon: <Zap size={20} /> },
+              { name: 'Framer', icon: <Heart size={20} /> },
+            ].map((tech) => (
+              <div key={tech.name} className="flex items-center justify-center gap-3 p-8 rounded-[2.5rem] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 font-black uppercase italic tracking-wider text-sm hover:border-indigo-500/30 transition-all">
+                <span className="text-indigo-500">{tech.icon}</span>
+                {tech.name}
+              </div>
+            ))}
           </div>
         </section>
       </div>
 
-      {/* --- MODAL (Neo-Modern style) --- */}
+      {/* --- MODAL --- */}
       <AnimatePresence>
         {selected && (
-          <>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setSelected(null)}
-              className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-md" 
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-xl" 
             />
             <motion.div 
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="fixed inset-x-4 bottom-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 z-[70] w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[3rem] p-8 md:p-12 shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
+              className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-[4rem] p-10 md:p-16 shadow-2xl border border-white/10 overflow-hidden"
             >
-              <button onClick={() => setSelected(null)} className="absolute top-6 right-6 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                ✕
+              <button 
+                onClick={() => setSelected(null)} 
+                className="absolute top-8 right-8 p-3 rounded-full bg-slate-100 dark:bg-slate-800 hover:rotate-90 transition-all duration-300"
+              >
+                <X size={20} />
               </button>
-              
-              <div className="flex flex-col md:flex-row gap-8 items-center md:items-start">
-                <Avatar src={selected.photo} name={selected.name} size={110} isLead={selected.isLead} />
-                <div className="text-center md:text-left">
-                  <h4 className="text-4xl font-black italic uppercase tracking-tighter mb-2">{selected.name}</h4>
-                  <p className="text-indigo-500 font-bold text-sm mb-6 uppercase tracking-[0.1em]">{selected.role}</p>
-                  <p className="text-slate-600 dark:text-slate-300 font-medium leading-relaxed mb-8">
-                    {selected.bio}
-                  </p>
-                  
-                  <div className="flex flex-wrap gap-5 justify-center md:justify-start">
-                    <a href={selected.social?.github} target="_blank" className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold text-sm hover:scale-105 transition-transform">
-                      <FaGithub size={18} /> GitHub
-                    </a>
-                    <a href={selected.social?.linkedin} target="_blank" className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#0077b5] text-white font-bold text-sm hover:scale-105 transition-transform">
-                      <FaLinkedin size={18} /> LinkedIn
-                    </a>
-                    <a href={selected.social?.steam} target="_blank" className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#1b2838] text-white font-bold text-sm hover:scale-105 transition-transform">
-                      <FaSteam size={18} /> Steam
-                    </a>
-                  </div>
+
+              <div className="flex flex-col items-center text-center">
+                <Avatar src={selected.photo} name={selected.name} size={140} isLead={selected.isLead} />
+                <h4 className="mt-10 text-5xl font-black italic uppercase tracking-tighter">{selected.name}</h4>
+                <p className="mt-2 text-indigo-500 font-black uppercase tracking-[0.2em] text-xs">{selected.role}</p>
+                
+                <p className="mt-8 text-slate-600 dark:text-slate-300 font-medium text-lg leading-relaxed">
+                  {selected.bio}
+                </p>
+                
+                <div className="mt-12 flex flex-wrap gap-4 justify-center">
+                  <SocialLink href={selected.social?.github} icon={<FaGithub size={22} />} label="GitHub" color="bg-slate-950" />
+                  <SocialLink href={selected.social?.linkedin} icon={<FaLinkedin size={22} />} label="LinkedIn" color="bg-blue-600" />
+                  <SocialLink href={selected.social?.steam} icon={<FaSteam size={22} />} label="Steam" color="bg-slate-800" />
                 </div>
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function SocialLink({ href, icon, label, color }: any) {
+  return (
+    <a href={href} target="_blank" className={`flex items-center gap-3 px-8 py-4 rounded-[2rem] ${color} text-white font-black uppercase italic tracking-widest text-xs hover:scale-105 transition-transform shadow-xl`}>
+      {icon} {label}
+    </a>
   );
 }

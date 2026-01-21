@@ -6,7 +6,7 @@ import AvatarUploader from "../components/AvatarUploader";
 import { motion } from "framer-motion";
 
 import {
-  MapPin, Book, Home, Heart, User, Info, Calendar, 
+  MapPin, Book, Home, Heart, User, Info, Calendar, GraduationCap,
   Sparkles, Zap, Moon, Sun, Coffee, Check, ShieldCheck
 } from "lucide-react";
 
@@ -71,14 +71,12 @@ export type Listing = {
 
 // --------------- SUBCOMPONENTS ----------------
 
-function ProfileHeader({ profile, isOwner, listingsCount, onEdit }: any) {
+function ProfileHeader({ profile, isOwner }: any) { // listingsCount убрали из аргументов, если он не нужен
   return (
-    <Card className="relative overflow-hidden !p-10 border-indigo-500/10 dark:border-indigo-500/20">
-      {/* Фоновое свечение */}
-      <div className="absolute top-[-10%] right-[-5%] w-64 h-64 bg-indigo-500/10 blur-[100px] rounded-full" />
+    <Card className="relative overflow-hidden !p-10 border-indigo-500/10 dark:border-indigo-500/20 bg-white dark:bg-slate-900">
+      <div className="absolute top-[-10%] right-[-5%] w-64 h-64 bg-indigo-500/10 dark:bg-indigo-500/5 blur-[100px] rounded-full" />
       
       <div className="flex flex-col md:flex-row gap-10 items-center md:items-start relative z-10">
-        {/* Аватар с премиум-рамкой */}
         <div className="relative group">
           <div className="w-40 h-40 rounded-[3.5rem] overflow-hidden bg-slate-100 dark:bg-slate-800 ring-4 ring-white dark:ring-[#020617] shadow-2xl transition-transform group-hover:scale-105 duration-500">
             {profile.avatar_url ? (
@@ -94,7 +92,6 @@ function ProfileHeader({ profile, isOwner, listingsCount, onEdit }: any) {
               </div>
             )}
           </div>
-          {/* Badge за верификацию или статус */}
           <div className="absolute -bottom-2 -right-2 bg-indigo-500 text-white p-3 rounded-2xl shadow-xl shadow-indigo-500/40">
             <ShieldCheck size={20} />
           </div>
@@ -103,26 +100,31 @@ function ProfileHeader({ profile, isOwner, listingsCount, onEdit }: any) {
         <div className="flex-1 text-center md:text-left space-y-6">
           <div className="space-y-2">
             <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
-               <span className="px-4 py-1.5 bg-indigo-500 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg shadow-indigo-500/20">
-                 {profile.is_student ? "Student" : "Professional"}
-               </span>
+              <span className="px-4 py-1.5 bg-indigo-500 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg shadow-indigo-500/20">
+                {profile.university ? "Студент" : "Пользователь"}
+              </span>
+              <span className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-black uppercase tracking-[0.2em] rounded-full border border-slate-200/50 dark:border-slate-700/50">
+                {profile.status === 'searching' ? 'Активный поиск' : 'Смотрит варианты'}
+              </span>
             </div>
+
             <h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white leading-[0.85]">
               {profile.full_name || "Anonymous User"}
             </h1>
           </div>
 
-          <div className="flex flex-wrap justify-center md:justify-start gap-6">
+          <div className="flex flex-wrap justify-center md:justify-start gap-8">
             <div className="flex flex-col">
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Location</span>
-              <span className="text-sm font-bold dark:text-white flex items-center gap-1">
-                <MapPin size={14} className="text-indigo-500" /> {profile.city || "Almaty"}
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Location</span>
+              <span className="text-sm font-bold text-slate-700 dark:text-white flex items-center gap-2">
+                <MapPin size={16} className="text-indigo-500" /> {profile.city || "Алматы"}
               </span>
             </div>
+            
             <div className="flex flex-col">
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Activity</span>
-              <span className="text-sm font-bold dark:text-white flex items-center gap-1">
-                <Sparkles size={14} className="text-amber-500" /> {listingsCount} Listings
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">University</span>
+              <span className="text-sm font-bold text-slate-700 dark:text-white flex items-center gap-2">
+                <GraduationCap size={16} className="text-indigo-500" /> {profile.university || "Не указан"}
               </span>
             </div>
           </div>
@@ -157,66 +159,96 @@ function AboutCard({ profile }: any) {
     }
   }
 
-  return (
-    <Card className="md:col-span-2">
-      <div className="flex justify-between items-end mb-8">
-        <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-500 mb-1">Manifesto</p>
-          <h3 className="text-3xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">Обо мне</h3>
-        </div>
-        <div className="p-4 bg-indigo-500/5 rounded-3xl text-indigo-500">
-          <Info size={24} />
-        </div>
+return (
+  <Card className="md:col-span-2 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-8">
+    {/* Хедер манифеста */}
+    <div className="flex justify-between items-end mb-8">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-500 mb-1">Manifesto</p>
+        <h3 className="text-3xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white">Обо мне</h3>
       </div>
+      <div className="p-4 bg-indigo-500/5 rounded-3xl text-indigo-500">
+        <Info size={24} />
+      </div>
+    </div>
 
-      <div className="text-xl font-medium italic leading-relaxed text-slate-600 dark:text-slate-300 border-l-4 border-indigo-500 pl-6 py-2">
-        "{profile?.about_me || profile?.bio || "Пользователь пока не заполнил свой манифест."}"
-      </div>
+    {/* Текст манифеста */}
+    <div className="text-xl font-medium italic leading-relaxed text-slate-600 dark:text-slate-300 border-l-4 border-indigo-500 pl-6 py-2 mb-12">
+      "{profile?.about_me || "Пользователь пока не заполнил свой манифест."}"
+    </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12 pt-8 border-t border-slate-100 dark:border-slate-800">
-         <InfoBlock 
-            label="Birth Date" 
-            value={displayDate} 
-            icon={<Calendar size={16}/>} 
-         />
-         <InfoBlock 
-            label="Personality" 
-            value={profile?.introvert_extrovert || "—"} 
-            icon={<Heart size={16}/>} 
-         />
-         <InfoBlock 
-            label="University" 
-            value={profile?.university || "—"} 
-            icon={<Book size={16}/>} 
-         />
-      </div>
-    </Card>
-  );
+    {/* Блок с основными данными (Возраст, Город, ВУЗ) */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-8 border-t border-slate-100 dark:border-slate-800">
+      <InfoBlock 
+        label="Возраст" 
+        value={profile?.age ? `${profile.age} лет` : "—"} 
+        icon={<Calendar size={16} className="text-indigo-500" />} 
+      />
+
+      <InfoBlock 
+        label="Город" 
+        value={profile?.city || "Алматы"} 
+        icon={<MapPin size={16} className="text-indigo-500" />} 
+      />
+
+      <InfoBlock 
+        label="Университет" 
+        value={profile?.university || "—"} 
+        icon={<GraduationCap size={16} className="text-indigo-500" />} 
+      />
+    </div>
+  </Card>
+);
 }
 
 function PreferencesCard({ profile }: any) {
   return (
-    <Card className="bg-slate-900 dark:bg-white text-white dark:text-slate-900">
-      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400 mb-6">Target Search</p>
+    /* bg-white для светлой темы, dark:bg-slate-900 (или dark:bg-white/5) для темной */
+    <Card className="bg-white dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 p-6">
+      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-500 mb-6">Target Search</p>
+      
       <div className="space-y-6">
         <div className="space-y-1">
-          <p className="text-xs font-bold uppercase tracking-widest opacity-50 text-indigo-400">Target Budget</p>
-          <p className="text-3xl text-black font-black italic uppercase tracking-tighter">
-            {money(profile.budget_min)} — {money(profile.budget_max)}
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Budget</p>
+          <p className="text-3xl text-indigo-500 font-black italic uppercase tracking-tighter">
+            {/* Проверка на наличие бюджета, чтобы не было пустых полосок */}
+            {profile.budget ? money(profile.budget) : "—"} 
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-4 text-black">
-          <PreferenceItem label="Room Type" value={profile.room_type} />
-          <PreferenceItem label="Gender" value={profile.preferred_gender} />
-          <PreferenceItem label="Age Range" value={`${profile.preferred_age_min}-${profile.preferred_age_max}`} />
-          <PreferenceItem label="Pets OK" value={profile.preferred_pets ? "Yes" : "No"} />
+
+        {/* Изменяем логику цветов текста: темный для светлой темы, светлый для темной */}
+        <div className="grid grid-cols-2 gap-4 text-slate-900 dark:text-white">
+          <PreferenceItem 
+            label="Gender" 
+            value={profile.preferred_gender === 'male' ? 'Парни' : profile.preferred_gender === 'female' ? 'Девушки' : 'Любой'} 
+          />
+          <PreferenceItem 
+            label="Age Range" 
+            value={`${profile.preferred_age_min || 18}-${profile.preferred_age_max || 25}`} 
+          />
+          <PreferenceItem 
+            label="Pets OK" 
+            value={profile.preferred_pets ? "Да" : "Нет"} 
+          />
+          <PreferenceItem 
+            label="Smoking OK" 
+            value={profile.preferred_smoking ? "Да" : "Нет"} 
+          />
         </div>
       </div>
     </Card>
   );
 }
-
 function LifestyleCard({ profile }: any) {
+  // Маппинг для красивого отображения типа расписания
+  const scheduleLabels: any = {
+    morning: { label: "Жаворонок", icon: <Sun size={20} className="text-amber-500"/> },
+    evening: { label: "Сова", icon: <Moon size={20} className="text-indigo-500"/> },
+    flexible: { label: "Гибкий", icon: <Coffee size={20} className="text-slate-400"/> }
+  };
+
+  const currentSchedule = scheduleLabels[profile.schedule_type] || scheduleLabels.flexible;
+
   return (
     <Card>
       <div className="flex items-center gap-3 mb-8">
@@ -224,21 +256,12 @@ function LifestyleCard({ profile }: any) {
         <h3 className="text-2xl font-black italic uppercase tracking-tighter dark:text-white leading-none">Vibe Check</h3>
       </div>
       <div className="space-y-8">
-        <div className="grid grid-cols-2 gap-6">
-           <div className="flex items-center gap-3">
-             {profile.wake_time === 'morning' ? <Sun size={20} className="text-amber-500"/> : <Coffee size={20} className="text-indigo-500"/>}
-             <div>
-               <p className="text-[10px] font-black uppercase text-slate-400">Wake Up</p>
-               <p className="font-bold dark:text-white">{profile.wake_time || "Flexible"}</p>
-             </div>
-           </div>
-           <div className="flex items-center gap-3">
-             <Moon size={20} className="text-slate-400"/>
-             <div>
-               <p className="text-[10px] font-black uppercase text-slate-400">Sleep</p>
-               <p className="font-bold dark:text-white">{profile.sleep_time || "Flexible"}</p>
-             </div>
-           </div>
+        <div className="flex items-center gap-3">
+          {currentSchedule.icon}
+          <div>
+            <p className="text-[10px] font-black uppercase text-slate-400">Schedule</p>
+            <p className="font-bold dark:text-white">{currentSchedule.label}</p>
+          </div>
         </div>
         
         <div className="space-y-6">
