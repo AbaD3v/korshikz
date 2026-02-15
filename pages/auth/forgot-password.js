@@ -13,9 +13,10 @@ export default function ForgotPasswordPage() {
     setLoading(true);
     setMessage(null);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/update-password`,
-    });
+const { error } = await supabase.auth.resetPasswordForEmail(email, {
+  // Путь ДОЛЖЕН указывать на страницу смены пароля
+  redirectTo: 'https://korshikz.space/auth/update-password',
+});
 
     if (error) {
       setMessage({ type: 'error', text: error.message });

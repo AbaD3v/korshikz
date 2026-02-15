@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from "next/router";
-
+import { useAuthRedirect } from "@/hooks/useAuthRedirect";
 export default function LoginPage() {
+  // Просто вызываем хук в начале компонента
+  useAuthRedirect();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
