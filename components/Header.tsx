@@ -26,14 +26,25 @@ type HeaderProps = {
   setCity?: (c: string) => void;
 };
 
-/* ------------------ Auth Hook ------------------ */
 function useAuthProfile(setUser: (u: any) => void, setProfile: (p: any) => void, router: any) {
   useEffect(() => {
     let mounted = true;
+
+    // Список страниц, на которых НЕЛЬЗЯ делать автоматический редирект
+    // Добавляем сюда сброс пароля и подтверждение регистрации
+    const authExclusionPages = [
+      "/auth/update-password",
+      "/auth/confirm",
+      "/auth/forgot-password"
+    ];
+
+    const isExcluded = authExclusionPages.some(page => router.pathname.startsWith(page));
+
     const fetchUser = async () => {
       try {
         const { data } = await supabase.auth.getUser();
         const authUser = data?.user || null;
+        
         if (!mounted) return;
         setUser(authUser);
 
@@ -44,17 +55,26 @@ function useAuthProfile(setUser: (u: any) => void, setProfile: (p: any) => void,
             .eq("id", authUser.id)
             .maybeSingle();
 
+          // Если профиля еще нет в БД
           if (!p) {
             const { data: created } = await supabase
               .from("profiles")
               .insert([{ id: authUser.id, isOnboarded: false }])
               .select()
               .maybeSingle();
-            setProfile(created);
-            if (router.pathname !== "/onboarding") router.push("/onboarding");
-          } else {
-            setProfile(p);
-            if (p.isOnboarded === false && router.pathname !== "/onboarding") {
+            
+            if (mounted) setProfile(created);
+            
+            // Редирект на онбординг только если мы не на странице исключения
+            if (!isExcluded && router.pathname !== "/onboarding") {
+              router.push("/onboarding");
+            }
+          } 
+          // Если профиль есть, но онбординг не пройден
+          else {
+            if (mounted) setProfile(p);
+            
+            if (p.isOnboarded === false && !isExcluded && router.pathname !== "/onboarding") {
               router.push("/onboarding");
             }
           }
@@ -65,17 +85,23 @@ function useAuthProfile(setUser: (u: any) => void, setProfile: (p: any) => void,
     };
 
     fetchUser();
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       const authUser = session?.user || null;
-      setUser(authUser);
-      if (!authUser) setProfile(null);
+      if (mounted) {
+        setUser(authUser);
+        if (!authUser) setProfile(null);
+        
+        // Если пароль успешно обновлен, Supabase иногда триггерит событие PASSWORD_RECOVERY
+        // Можно добавить логику здесь, если нужно
+      }
     });
 
     return () => {
       mounted = false;
       listener.subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router.pathname]); // Следим за изменением пути
 }
 
 export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
