@@ -12,7 +12,7 @@ import ChatbotBootstrap from "@/chatbot-ui/ChatbotBootstrap";
 import { createKorshiBot } from "@/chatbot-ai/createKorshiBot";
 
 export default function App({ Component, pageProps }: AppProps) {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [city, setCity] = useState("Алматы");
 
   useEffect(() => {
@@ -25,9 +25,9 @@ export default function App({ Component, pageProps }: AppProps) {
       streamingProvider={createKorshiBot()}
     >
       {/* ДОБАВЛЕНО: 
-        1. w-full — гарантирует, что контейнер не шире экрана.
-        2. overflow-x-hidden — "срезает" вылетающие элементы (белую полосу).
-        3. relative — для правильного позиционирования чат-кнопки.
+        1. w-full - гарантирует, что контейнер не шире экрана.
+        2. overflow-x-hidden - "срезает" вылетающие элементы (белую полосу).
+        3. relative - для правильного позиционирования чат-кнопки.
       */}
       <div
         className={`
