@@ -6,7 +6,6 @@ import { randomUUID } from "crypto";
 import FormData from "form-data";
 import Tesseract from "tesseract.js";
 
-
 // pdf-poppler имеет слабые типы, поэтому берём через require
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pdfPoppler: any = require("pdf-poppler");
@@ -21,9 +20,9 @@ type OkResponse = {
   signals?: any;
 };
 
-type ErrResponse = { error: string };
+type ErrResponse = { error: string; method?: string; debug?: any };
 
-// ----------------- ANTI-SPAM KEYWORDS -----------------
+// ----------------- ANTI-SPAM -----------------
 const KEYWORDS = [
   "студенттік",
   "студенческий",
@@ -36,6 +35,7 @@ const KEYWORDS = [
   "факультет",
   "faculty",
   "student",
+  "student id",
   "бакалавр",
   "магистратура",
 ];
@@ -66,9 +66,6 @@ function decidePass(text: string) {
   const marker = hasDocMarker(text);
   const idLike = hasIdLikeNumber(text);
 
-  // антиспам:
-  // - минимум 2 keyword
-  // - и доп. сигнал (маркер документа или номер)
   const ai_passed = matches >= 2 && (marker || idLike);
 
   return {
@@ -83,7 +80,6 @@ function decidePass(text: string) {
 }
 
 // ----------------- HELPERS -----------------
-
 async function withRetry<T>(fn: () => Promise<T>, tries = 2, delayMs = 900) {
   let lastErr: any;
   for (let i = 0; i < tries; i++) {
@@ -109,15 +105,12 @@ function isImageExt(ext: string) {
   return [".png", ".jpg", ".jpeg"].includes(ext.toLowerCase());
 }
 
-async function downloadToTemp(url: string, tempFile: string, maxBytes = 10 * 1024 * 1024) {
+async function downloadToTemp(url: string, tempFile: string, maxBytes = 12 * 1024 * 1024) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`Download failed: ${resp.status}`);
 
   const buf = Buffer.from(await resp.arrayBuffer());
-  if (buf.byteLength > maxBytes) {
-    throw new Error(`File too large (>${Math.round(maxBytes / 1024 / 1024)}MB)`);
-  }
-
+  if (buf.byteLength > maxBytes) throw new Error(`File too large (>${Math.round(maxBytes / 1024 / 1024)}MB)`);
   await fs.promises.writeFile(tempFile, buf);
 }
 
@@ -143,10 +136,7 @@ async function ocrSpaceByFile(localPath: string) {
   });
 
   const bodyText = await resp.text();
-
-  if (!resp.ok) {
-    throw new Error(`OCR.Space HTTP error: ${resp.status}`);
-  }
+  if (!resp.ok) throw new Error(`OCR.Space HTTP error: ${resp.status}`);
 
   let data: any;
   try {
@@ -167,7 +157,6 @@ async function ocrSpaceByFile(localPath: string) {
 }
 
 async function tesseractOcrImage(localPath: string) {
-  // пробуем rus+kaz, если kaz не установлена — fallback rus
   try {
     const { data } = await Tesseract.recognize(localPath, "rus+kaz", { logger: () => {} });
     return (data?.text ?? "").toString();
@@ -182,8 +171,8 @@ async function pdfToPngs(pdfPath: string, outDir: string) {
     format: "png",
     out_dir: outDir,
     out_prefix: "page",
-    page: null, // все страницы
-    // poppler_path: process.env.POPPLER_PATH || "C:\\poppler\\Library\\bin",
+    page: null,
+    // poppler_path: process.env.POPPLER_PATH, // если нужно
   };
 
   await pdfPoppler.convert(pdfPath, opts);
@@ -195,7 +184,7 @@ async function pdfToPngs(pdfPath: string, outDir: string) {
     .sort();
 }
 
-function buildPreviewText(text: string, maxLen = 1200) {
+function buildPreviewText(text: string, maxLen = 1400) {
   const t = (text || "").replace(/\s+\n/g, "\n").trim();
   if (t.length <= maxLen) return t;
   return t.slice(0, maxLen) + "\n…";
@@ -206,12 +195,25 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<OkResponse | ErrResponse>
 ) {
-    
-  // дальше твой код...
-  // ✅ всегда JSON
   res.setHeader("Content-Type", "application/json; charset=utf-8");
 
-  // ✅ FIX для Vercel: preflight OPTIONS
+  // 🔍 debug ping
+  if (req.query?.__debug === "1") {
+    return res.status(200).json({
+      submitted: false,
+      ai_passed: false,
+      matches: 0,
+      reason: "debug ok",
+      signals: {
+        from: "pages/api/verify-student.ts",
+        method: req.method,
+        time: new Date().toISOString(),
+        url: req.url,
+      },
+    });
+  }
+
+  // ✅ preflight fix
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -219,17 +221,17 @@ export default async function handler(
     return res.status(200).end();
   }
 
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed", method: req.method });
+  }
+
   let tempDir: string | null = null;
 
   try {
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method not allowed" });
-    }
-
     const { imageUrl, userId, filePath } = req.body as {
-      imageUrl?: string; // signedUrl
+      imageUrl?: string;
       userId?: string;
-      filePath?: string; // storage path
+      filePath?: string;
     };
 
     if (!imageUrl || !userId || !filePath) {
@@ -244,20 +246,18 @@ export default async function handler(
 
     const supabaseAdmin = createClient(supabaseUrl, serviceKey);
 
-    // 1) Скачиваем файл во временную папку
+    // tmp
     const tmpRoot = path.join(process.cwd(), "tmp");
     await fs.promises.mkdir(tmpRoot, { recursive: true });
 
     const ext = extFromFilePath(filePath);
-
     tempDir = path.join(tmpRoot, randomUUID());
     await fs.promises.mkdir(tempDir, { recursive: true });
 
     const tempFile = path.join(tempDir, `input${ext}`);
+    await downloadToTemp(imageUrl, tempFile, 12 * 1024 * 1024);
 
-    await downloadToTemp(imageUrl, tempFile, 12 * 1024 * 1024); // 12MB лимит
-
-    // 2) OCR по типу
+    // OCR
     let rawText = "";
     let provider: OkResponse["ocr_provider"] = undefined;
 
@@ -270,21 +270,16 @@ export default async function handler(
           ai_passed: false,
           matches: 0,
           ocr_provider: "tesseract_pdf",
-          reason:
-            "Не удалось извлечь страницы из PDF. Попробуйте другой файл или сделайте скрин/фото страницы.",
+          reason: "Не удалось извлечь страницы из PDF. Попробуйте скрин/фото страницы.",
           signals: { pdfPages: 0 },
         });
       }
 
-      // ограничим 2 страницами
       const pagesToScan = pngs.slice(0, 2);
-
       let combined = "";
       for (const p of pagesToScan) {
-        const pageText = await tesseractOcrImage(p);
-        combined += "\n" + pageText;
+        combined += "\n" + (await tesseractOcrImage(p));
       }
-
       rawText = combined;
       provider = "tesseract_pdf";
     } else if (isImageExt(ext)) {
@@ -302,7 +297,7 @@ export default async function handler(
     const { matches, ai_passed, signals } = decidePass(rawText);
     const preview = buildPreviewText(rawText);
 
-    // 3) если не похоже — НЕ создаём заявку
+    // антиспам: не прошёл — не создаём заявку
     if (!ai_passed) {
       return res.status(200).json({
         submitted: false,
@@ -311,11 +306,11 @@ export default async function handler(
         ocr_provider: provider,
         reason:
           "Документ не похож на студенческий или текст плохо читается. Сделайте фото ближе, без бликов, ровно и при хорошем свете.",
-        signals: { ...signals, provider },
+        signals: { ...signals, provider, ext },
       });
     }
 
-    // 4) если уже есть pending — не создаём новую
+    // если уже pending — не создаём новую
     const { data: existingPending, error: pendingErr } = await supabaseAdmin
       .from("verification_requests")
       .select("id")
@@ -339,11 +334,7 @@ export default async function handler(
       if (insertErr) throw new Error(`Insert request error: ${insertErr.message}`);
     }
 
-    // 5) профиль -> pending (если колонка есть)
-    await supabaseAdmin
-      .from("profiles")
-      .update({ verification_status: "pending" })
-      .eq("id", userId);
+    await supabaseAdmin.from("profiles").update({ verification_status: "pending" }).eq("id", userId);
 
     return res.status(200).json({
       submitted: true,
@@ -355,10 +346,8 @@ export default async function handler(
     });
   } catch (err: any) {
     console.error("[verify-student] ERROR:", err);
-    // для фронта лучше всегда JSON
     return res.status(500).json({ error: err?.message || "Unknown error" });
   } finally {
-    // cleanup temp dir
     if (tempDir) {
       fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
