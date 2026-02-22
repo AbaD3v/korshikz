@@ -6,23 +6,19 @@ import { randomUUID } from "crypto";
 import FormData from "form-data";
 import Tesseract from "tesseract.js";
 
-// pdf-poppler слаботипизированный → require
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const pdfPoppler: any = require("pdf-poppler");
-
 type OkResponse = {
   submitted: boolean;
   ai_passed: boolean;
   matches: number;
   reason?: string;
   request_status?: "pending";
-  ocr_provider?: "ocrspace" | "tesseract" | "tesseract_pdf";
+  ocr_provider?: "ocrspace" | "tesseract";
   signals?: any;
 };
 
 type ErrResponse = { error: string; method?: string };
 
-const API_SIGNATURE = "verify-student-pages-prod-v1";
+const API_SIGNATURE = "verify-student-pages-photos-only-v1";
 
 // ----------------- ANTI-SPAM -----------------
 const KEYWORDS = [
@@ -97,9 +93,9 @@ async function withRetry<T>(fn: () => Promise<T>, tries = 2, delayMs = 900) {
 
 function extFromFilePath(filePath: string) {
   const p = filePath.toLowerCase();
-  if (p.endsWith(".pdf")) return ".pdf";
   if (p.endsWith(".png")) return ".png";
   if (p.endsWith(".jpg") || p.endsWith(".jpeg")) return ".jpg";
+  if (p.endsWith(".pdf")) return ".pdf";
   return path.extname(p) || ".bin";
 }
 
@@ -170,24 +166,6 @@ async function tesseractOcrImage(localPath: string) {
   }
 }
 
-async function pdfToPngs(pdfPath: string, outDir: string) {
-  const opts: any = {
-    format: "png",
-    out_dir: outDir,
-    out_prefix: "page",
-    page: null,
-    // poppler_path: process.env.POPPLER_PATH, // если хочешь задавать на Windows
-  };
-
-  await pdfPoppler.convert(pdfPath, opts);
-
-  const files = await fs.promises.readdir(outDir);
-  return files
-    .filter((f) => f.toLowerCase().endsWith(".png"))
-    .map((f) => path.join(outDir, f))
-    .sort();
-}
-
 function buildPreviewText(text: string, maxLen = 1400) {
   const t = (text || "").replace(/\s+\n/g, "\n").trim();
   if (t.length <= maxLen) return t;
@@ -210,7 +188,6 @@ export default async function handler(
       matches: 0,
       reason: "debug ok",
       signals: {
-        from: "pages/api/verify-student.ts",
         signature: API_SIGNATURE,
         method: req.method,
         time: new Date().toISOString(),
@@ -243,68 +220,57 @@ export default async function handler(
       return res.status(400).json({ error: "Missing imageUrl or userId or filePath" });
     }
 
+    const ext = extFromFilePath(filePath);
+
+    // ✅ PDF пока не поддерживаем (Vercel-safe)
+    if (ext === ".pdf") {
+      return res.status(200).json({
+        submitted: false,
+        ai_passed: false,
+        matches: 0,
+        reason: "PDF пока не поддерживается. Загрузите фото/скрин документа (JPG/PNG).",
+        signals: { pdfBlocked: true },
+      });
+    }
+
+    if (!isImageExt(ext)) {
+      return res.status(400).json({ error: "Unsupported file type (only JPG/PNG)" });
+    }
+
+    // Supabase admin
     const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
     if (!supabaseUrl) throw new Error("Missing SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL");
     if (!serviceKey) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
 
     const supabaseAdmin = createClient(supabaseUrl, serviceKey);
 
-    // tmp folder
+    // tmp
     const tmpRoot = path.join(process.cwd(), "tmp");
     await fs.promises.mkdir(tmpRoot, { recursive: true });
 
-    const ext = extFromFilePath(filePath);
     tempDir = path.join(tmpRoot, randomUUID());
     await fs.promises.mkdir(tempDir, { recursive: true });
 
     const tempFile = path.join(tempDir, `input${ext}`);
     await downloadToTemp(imageUrl, tempFile, 12 * 1024 * 1024);
 
-    // OCR
+    // OCR: OCR.Space -> fallback Tesseract
     let rawText = "";
-    let provider: OkResponse["ocr_provider"] = undefined;
+    let provider: OkResponse["ocr_provider"] = "ocrspace";
 
-    if (ext === ".pdf") {
-      // PDF → Poppler → PNG → Tesseract
-      const pngs = await pdfToPngs(tempFile, tempDir);
-
-      if (!pngs.length) {
-        return res.status(200).json({
-          submitted: false,
-          ai_passed: false,
-          matches: 0,
-          ocr_provider: "tesseract_pdf",
-          reason: "Не удалось извлечь страницы из PDF. Попробуйте другой файл или сделайте скрин/фото.",
-          signals: { pdfPages: 0 },
-        });
-      }
-
-      const pagesToScan = pngs.slice(0, 2);
-      let combined = "";
-      for (const p of pagesToScan) {
-        combined += "\n" + (await tesseractOcrImage(p));
-      }
-      rawText = combined;
-      provider = "tesseract_pdf";
-    } else if (isImageExt(ext)) {
-      // Image → OCR.Space → fallback Tesseract
-      try {
-        rawText = await withRetry(() => ocrSpaceByFile(tempFile), 2, 900);
-        provider = "ocrspace";
-      } catch {
-        rawText = await tesseractOcrImage(tempFile);
-        provider = "tesseract";
-      }
-    } else {
-      return res.status(400).json({ error: "Unsupported file type" });
+    try {
+      rawText = await withRetry(() => ocrSpaceByFile(tempFile), 2, 900);
+      provider = "ocrspace";
+    } catch {
+      rawText = await tesseractOcrImage(tempFile);
+      provider = "tesseract";
     }
 
-    const { matches, ai_passed, signals } = decidePass(rawText);
     const preview = buildPreviewText(rawText);
+    const { matches, ai_passed, signals } = decidePass(rawText);
 
-    // not passed → no request
+    // Не прошло -> не создаем заявку
     if (!ai_passed) {
       return res.status(200).json({
         submitted: false,
@@ -341,7 +307,6 @@ export default async function handler(
       if (insertErr) throw new Error(`Insert request error: ${insertErr.message}`);
     }
 
-    // profile → pending
     await supabaseAdmin.from("profiles").update({ verification_status: "pending" }).eq("id", userId);
 
     return res.status(200).json({
