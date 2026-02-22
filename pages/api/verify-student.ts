@@ -246,11 +246,11 @@ export default async function handler(
     const supabaseAdmin = createClient(supabaseUrl, serviceKey);
 
     // tmp
-    const tmpRoot = path.join(process.cwd(), "tmp");
-    await fs.promises.mkdir(tmpRoot, { recursive: true });
+    const tmpRoot = process.env.VERCEL ? "/tmp" : path.join(process.cwd(), "tmp");
+await fs.promises.mkdir(tmpRoot, { recursive: true });
 
-    tempDir = path.join(tmpRoot, randomUUID());
-    await fs.promises.mkdir(tempDir, { recursive: true });
+tempDir = path.join(tmpRoot, randomUUID());
+await fs.promises.mkdir(tempDir, { recursive: true });
 
     const tempFile = path.join(tempDir, `input${ext}`);
     await downloadToTemp(imageUrl, tempFile, 12 * 1024 * 1024);
