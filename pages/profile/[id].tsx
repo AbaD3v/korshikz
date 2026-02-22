@@ -1,4 +1,3 @@
-"use client";
 
 import React, { useEffect, useState } from "react";
 import { GetServerSideProps } from "next";
@@ -6,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/hooks/utils/supabase/client";
+import StudentVerifyUploader from "../../components/StudentVerifyUploader";
 import { 
   MessageSquare, 
   UserCircle, 
@@ -23,6 +23,7 @@ import EditProfileForm from "../../components/EditProfileForm";
 /* --- Типы данных --- */
 export type ProfilePublicData = {
   id: string;
+  is_verified?: boolean;
   full_name: string;
   university: string;
   faculty: string;
@@ -59,11 +60,21 @@ export default function ProfilePage({ initialProfile, initialListings, id }: Pro
   const [isOwner, setIsOwner] = useState(false);
   const [editing, setEditing] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-    checkOwnership();
-  }, [id]);
+useEffect(() => {
+  setMounted(true);
+
+  (async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const uid = user?.id ?? null;
+
+    console.log("[Profile] url id:", id, "auth user id:", uid);
+
+    setAuthUserId(uid);
+    setIsOwner(Boolean(uid && uid === id));
+  })();
+}, [id]);
 
   // Проверка прав доступа: мой это профиль или нет
   const checkOwnership = async () => {
@@ -182,21 +193,30 @@ export default function ProfilePage({ initialProfile, initialListings, id }: Pro
                 exit={{ opacity: 0, scale: 0.98 }}
                 className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[3rem] p-8 md:p-14 shadow-2xl"
               >
-                <div className="mb-12">
-                  <div className="flex items-center gap-2 mb-2">
-                    <ShieldCheck size={14} className="text-indigo-500" />
-                    <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Settings</span>
-                  </div>
-                  <h2 className="text-5xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white leading-none">
-                    Редактировать <span className="text-indigo-500 underline decoration-indigo-500/20 underline-offset-8">профиль</span>
-                  </h2>
-                </div>
-                
-                <EditProfileForm 
-                  profile={profile} 
-                  onSave={handleProfileUpdated} 
-                  onCancel={() => setEditing(false)} 
-                />
+<div className="mb-12">
+  <div className="flex items-center gap-2 mb-2">
+    <ShieldCheck size={14} className="text-indigo-500" />
+    <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Settings</span>
+  </div>
+  <h2 className="text-5xl font-black italic uppercase tracking-tighter text-slate-900 dark:text-white leading-none">
+    Редактировать <span className="text-indigo-500 underline decoration-indigo-500/20 underline-offset-8">профиль</span>
+  </h2>
+</div>
+
+{/* НОВЫЙ БЛОК: Верификация студента */}
+{isOwner && (
+  <div className="mb-12">
+  {isOwner && authUserId ? (
+    <StudentVerifyUploader userId={authUserId} />
+  ) : null}
+</div>
+)}
+
+<EditProfileForm 
+  profile={profile} 
+  onSave={handleProfileUpdated} 
+  onCancel={() => setEditing(false)} 
+/>
               </motion.div>
             )}
           </AnimatePresence>

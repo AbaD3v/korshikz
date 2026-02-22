@@ -13,21 +13,26 @@
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@google-cloud/vision": "^5.3.4",
     "@heroicons/react": "^2.2.0",
     "@prisma/client": "^6.18.0",
     "@sparticuz/chromium-min": "^141.0.0",
     "@supabase/auth-helpers-nextjs": "^0.15.0",
-    "@supabase/supabase-js": "^2.90.1",
+    "@supabase/supabase-js": "^2.97.0",
     "bcrypt": "^5.1.0",
     "cheerio": "^1.1.2",
     "cookie": "^0.5.0",
+    "form-data": "^4.0.5",
     "framer-motion": "^12.23.24",
     "jsonwebtoken": "^9.0.0",
     "lucide-react": "^0.552.0",
     "next": "14.2.0",
     "next-sitemap": "^4.2.3",
     "next-themes": "^0.4.6",
+    "ocr-space-api-wrapper": "^2.4.2",
     "openai": "^6.15.0",
+    "pdf-lib": "^1.17.1",
+    "pdf-poppler": "^0.2.3",
     "puppeteer": "^24.34.0",
     "puppeteer-core": "^24.34.0",
     "react": "18.2.0",
@@ -35,14 +40,16 @@
     "react-icons": "^5.5.0",
     "react-markdown": "^10.1.0",
     "resend": "^6.6.0",
+    "sonner": "^2.0.7",
+    "tesseract.js": "^7.0.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/react": "19.2.6",
-    "autoprefixer": "^10.4.0",
-    "postcss": "^8.4.0",
+    "autoprefixer": "^10.4.24",
+    "postcss": "^8.5.6",
     "prisma": "^6.18.0",
-    "tailwindcss": "^3.4.0",
+    "tailwindcss": "^3.4.19",
     "typescript": "5.9.3"
   }
 }

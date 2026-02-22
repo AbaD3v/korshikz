@@ -11,10 +11,13 @@ import ChatbotBootstrap from "@/chatbot-ui/ChatbotBootstrap";
 
 import { createKorshiBot } from "@/chatbot-ai/createKorshiBot";
 
+import { Toaster } from "sonner"; // ✅ ДОБАВЛЕНО
+
 export default function App({ Component, pageProps }: AppProps) {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [city, setCity] = useState("Алматы");
 
+  // переключение dark класса
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
@@ -24,22 +27,23 @@ export default function App({ Component, pageProps }: AppProps) {
       storageKey="korshi-chat"
       streamingProvider={createKorshiBot()}
     >
-      {/* ДОБАВЛЕНО: 
-        1. w-full - гарантирует, что контейнер не шире экрана.
-        2. overflow-x-hidden - "срезает" вылетающие элементы (белую полосу).
-        3. relative - для правильного позиционирования чат-кнопки.
-      */}
       <div
         className={`
-          min-h-screen w-full overflow-x-hidden relative flex flex-col
-          ${theme === "dark" ? "bg-gray-900 text-white" : "bg-white text-gray-900"}
+          min-h-screen w-full overflow-x-hidden relative flex flex-col transition-colors duration-300
+          ${
+            theme === "dark"
+              ? "bg-[#0f1117] text-white"
+              : "bg-white text-gray-900"
+          }
         `}
       >
-        <Header theme={theme} setTheme={setTheme} city={city} setCity={setCity} />
+        <Header
+          theme={theme}
+          setTheme={setTheme}
+          city={city}
+          setCity={setCity}
+        />
 
-        {/* main теперь имеет flex-grow, чтобы футер всегда прижимался к низу, 
-          а w-full не давал контенту распирать страницу.
-        */}
         <main className="flex-grow w-full max-w-full">
           <Component {...pageProps} city={city} />
         </main>
@@ -48,6 +52,16 @@ export default function App({ Component, pageProps }: AppProps) {
       </div>
 
       <ChatbotFloatingButton />
+
+      {/* 🔥 Toast контейнер (обязателен для sonner) */}
+      <Toaster
+        richColors
+        position="top-right"
+        toastOptions={{
+          className:
+            "rounded-xl shadow-xl border border-gray-200 dark:border-gray-700",
+        }}
+      />
     </ChatbotProvider>
   );
 }
