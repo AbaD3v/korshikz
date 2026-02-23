@@ -24,6 +24,18 @@
     }
   },
 
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "components/chat/ChatPage.js", "components/chat/ChatList.js", "pages/chat/[id].js", "pages/chat/[id].js"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "components/chat/ChatPage.js",
+    "components/chat/ChatList.js",
+    "pages/chat/[id].js"
+  ],
+
+  "exclude": [
+    "node_modules",
+    "korshi-ocr-worker",
+    "korshi-ocr-worker/**"
+  ]
 }
