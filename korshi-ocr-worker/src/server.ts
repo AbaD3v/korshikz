@@ -1,185 +1,243 @@
+// src/server.ts
 import express from "express";
-import fs from "fs";
-import path from "path";
-import { randomUUID } from "crypto";
-import FormData from "form-data";
 import { createClient } from "@supabase/supabase-js";
+import FormData from "form-data";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const OCR_SPACE_KEY = process.env.OCR_SPACE_KEY!;
-const SECRET = process.env.RENDER_OCR_SECRET!;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const BUCKET = process.env.VERIFICATION_BUCKET || "verification-docs";
 
-const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE);
+const RENDER_OCR_SECRET = process.env.RENDER_OCR_SECRET!;
+const WORKER_ID = process.env.WORKER_ID || `worker-${Math.random().toString(16).slice(2)}`;
 
-const KEYWORDS = [
-  "студенттік","студенческий","студент","билет","университет","university","колледж","college",
-  "факультет","faculty","student","student id","бакалавр","магистратура",
-];
-const DOC_MARKERS = [
-  /университет|university/i,
-  /колледж|college/i,
-  /факультет|faculty/i,
-  /студент|student/i,
-  /student\s*id/i,
-];
+const OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY!;
+const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS || 45000);
+const DOWNLOAD_TIMEOUT_MS = Number(process.env.DOWNLOAD_TIMEOUT_MS || 20000);
+const MAX_ATTEMPTS = Number(process.env.MAX_ATTEMPTS || 5);
+const BATCH_SIZE = Number(process.env.BATCH_SIZE || 2);
+const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 10000);
 
-function countKeywords(text: string) {
-  const t = (text || "").toLowerCase();
-  return KEYWORDS.reduce((acc, kw) => acc + (t.includes(kw) ? 1 : 0), 0);
-}
-function hasDocMarker(text: string) { return DOC_MARKERS.some((re) => re.test(text || "")); }
-function hasIdLikeNumber(text: string) { return /\b\d{6,12}\b/.test(text || ""); }
+const KEYWORDS = (process.env.OCR_KEYWORDS || "student,студент,университет,university")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
 
-function decidePass(text: string) {
-  const matches = countKeywords(text);
-  const marker = hasDocMarker(text);
-  const idLike = hasIdLikeNumber(text);
-  const ai_passed = matches >= 2 && (marker || idLike);
-  return { matches, ai_passed, signals: { hasMarker: marker, hasIdLike: idLike, keywordsMatched: matches } };
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+
+function requireWorkerAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const h = req.headers.authorization || "";
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  if (!m || m[1] !== RENDER_OCR_SECRET) return res.status(401).json({ error: "Unauthorized" });
+  next();
 }
 
-function buildPreviewText(text: string, maxLen = 1400) {
-  const t = (text || "").replace(/\s+\n/g, "\n").trim();
-  if (t.length <= maxLen) return t;
-  return t.slice(0, maxLen) + "\n…";
+function backoff(attempt: number) {
+  const minutes = [1, 5, 15, 60, 360][Math.min(attempt - 1, 4)];
+  return new Date(Date.now() + minutes * 60_000);
 }
 
-async function fetchWithTimeout(url: string, options: any, ms = 12000) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms);
+async function fetchWithTimeout(url: string, init: any, timeoutMs: number) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: ctrl.signal });
+    const res = await fetch(url, { ...init, signal: ac.signal });
+    return res;
   } finally {
     clearTimeout(t);
   }
 }
 
-async function downloadToTemp(url: string, tempFile: string, maxBytes = 12 * 1024 * 1024) {
-  const resp = await fetchWithTimeout(url, {}, 12000);
-  if (!resp.ok) throw new Error(`Download failed: ${resp.status}`);
-
-  const buf = Buffer.from(await resp.arrayBuffer());
-  if (buf.byteLength > maxBytes) throw new Error(`File too large (> ${Math.round(maxBytes/1024/1024)}MB)`);
-
-  await fs.promises.writeFile(tempFile, buf);
+async function downloadFile(signedUrl: string): Promise<Buffer> {
+  const res = await fetchWithTimeout(signedUrl, { method: "GET" }, DOWNLOAD_TIMEOUT_MS);
+  if (!res.ok) throw new Error(`download_failed:${res.status}`);
+  const arr = await res.arrayBuffer();
+  return Buffer.from(arr);
 }
 
-async function ocrSpaceByFile(localPath: string) {
+async function ocrSpace(buffer: Buffer): Promise<string> {
   const form = new FormData();
-  form.append("apikey", OCR_SPACE_KEY);
+  form.append("apikey", OCR_SPACE_API_KEY);
   form.append("language", "rus");
-  form.append("OCREngine", "2");
   form.append("isOverlayRequired", "false");
-  form.append("scale", "true");
-  form.append("detectOrientation", "true");
-  form.append("file", fs.createReadStream(localPath));
+  form.append("OCREngine", "2");
+  form.append("file", buffer, { filename: "doc.jpg" });
 
-  const resp = await fetchWithTimeout("https://api.ocr.space/parse/image", {
-    method: "POST",
-    // @ts-ignore
-    body: form,
-    // @ts-ignore
-    headers: form.getHeaders(),
-  }, 12000);
+  const res = await fetchWithTimeout(
+    "https://api.ocr.space/parse/image",
+    {
+      method: "POST",
+      // @ts-ignore
+      headers: form.getHeaders(),
+      body: form as any,
+    },
+    OCR_TIMEOUT_MS
+  );
 
-  const bodyText = await resp.text();
-  if (!resp.ok) throw new Error(`OCR.Space HTTP error: ${resp.status}`);
+  if (!res.ok) throw new Error(`ocr_http_${res.status}`);
+  const json: any = await res.json();
 
-  let data: any;
-  try { data = JSON.parse(bodyText); } catch { throw new Error("OCR.Space returned non-JSON"); }
-
-  if (data?.IsErroredOnProcessing) {
-    const msg =
-      (Array.isArray(data?.ErrorMessage) && data.ErrorMessage[0]) ||
-      data?.ErrorDetails ||
-      "OCR.Space: processing error";
-    throw new Error(msg);
+  if (json?.IsErroredOnProcessing) {
+    const msg = json?.ErrorMessage?.[0] || "ocr_error";
+    throw new Error(`ocr_failed:${msg}`);
   }
 
-  return (data?.ParsedResults?.[0]?.ParsedText ?? "").toString();
+  const parsed = json?.ParsedResults?.[0]?.ParsedText || "";
+  return String(parsed);
 }
 
-function assertSecret(req: express.Request) {
-  const auth = req.header("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  return token && token === SECRET;
+function keywordMatch(text: string) {
+  const t = text.toLowerCase();
+  const hits = KEYWORDS.filter((k) => t.includes(k));
+  const passed = hits.length >= 2;
+  return { passed, hits };
 }
 
-app.post("/process-ocr", async (req, res) => {
-  if (!assertSecret(req)) return res.status(401).json({ error: "Unauthorized" });
+async function finalizePending(requestId: string, userId: string, payload: any) {
+  await supabaseAdmin
+    .from("verification_requests")
+    .update({
+      status: "pending",
+      ai_passed: true,
+      matches: payload.matches,
+      ocr_text_preview: payload.preview,
+      signals: payload.signals,
+      locked_at: null,
+      locked_by: null,
+      next_retry_at: null,
+      last_error: null,
+    })
+    .eq("id", requestId);
 
-  const { requestId, userId, filePath } = req.body as { requestId?: string; userId?: string; filePath?: string };
-  if (!requestId || !userId || !filePath) return res.status(400).json({ error: "Missing requestId/userId/filePath" });
+  await supabaseAdmin.from("profiles").update({ verification_status: "pending" }).eq("id", userId);
+}
 
-  const tmpRoot = process.env.TMPDIR || "/tmp";
-  const tempDir = path.join(tmpRoot, randomUUID());
+async function finalizeRejected(requestId: string, userId: string, reason: string, extra: any = {}) {
+  await supabaseAdmin
+    .from("verification_requests")
+    .update({
+      status: "rejected",
+      ai_passed: false,
+      signals: { ...(extra.signals || {}), reject_reason: reason },
+      last_error: reason,
+      locked_at: null,
+      locked_by: null,
+      next_retry_at: null,
+    })
+    .eq("id", requestId);
+
+  await supabaseAdmin.from("profiles").update({ verification_status: "rejected" }).eq("id", userId);
+}
+
+async function retryLater(requestId: string, attemptCount: number, err: string) {
+  const next = backoff(attemptCount);
+  await supabaseAdmin
+    .from("verification_requests")
+    .update({
+      status: "pending_ocr",
+      next_retry_at: next.toISOString(),
+      last_error: err,
+      locked_at: null,
+      locked_by: null,
+    })
+    .eq("id", requestId);
+}
+
+async function processJob(job: any) {
+  const requestId = String(job.id); // ✅ uuid
+  const userId = String(job.user_id);
+  const filePath = String(job.file_path);
+  const attemptCount = Number(job.attempt_count);
 
   try {
-    await fs.promises.mkdir(tempDir, { recursive: true });
+    const { data: signed, error: signErr } = await supabaseAdmin.storage
+      .from(BUCKET)
+      .createSignedUrl(filePath, 120);
 
-    // ставим processing
-    await supabaseAdmin.from("verification_requests").update({
-      signals: { stage: "processing" },
-    }).eq("id", requestId).eq("user_id", userId);
-
-    // signed url на файл (private bucket)
-    const { data: signed, error: signErr } = await supabaseAdmin
-      .storage
-      .from("verification-docs")
-      .createSignedUrl(filePath, 300);
-
-    if (signErr || !signed?.signedUrl) throw new Error("Failed to create signed url");
-
-    const tempFile = path.join(tempDir, "input.jpg");
-    await downloadToTemp(signed.signedUrl, tempFile);
-
-    // OCR с таймаутом (только OCR.Space тут)
-    const rawText = await ocrSpaceByFile(tempFile);
-
-    const preview = buildPreviewText(rawText);
-    const { matches, ai_passed, signals } = decidePass(rawText);
-
-    if (!ai_passed) {
-      await supabaseAdmin.from("verification_requests").update({
-        matches,
-        ai_passed,
-        status: "rejected", // или "rejected_ai" если добавишь отдельный статус
-        ocr_text_preview: preview,
-        signals: { ...signals, provider: "ocrspace" },
-        admin_comment: "Auto-rejected: not enough signals",
-      }).eq("id", requestId).eq("user_id", userId);
-
-      return res.status(200).json({ ok: true, ai_passed: false });
+    if (signErr || !signed?.signedUrl) {
+      throw new Error(`signed_url_failed:${signErr?.message || "no_url"}`);
     }
 
-    // прошло AI → отправляем в админ pending
-    await supabaseAdmin.from("verification_requests").update({
-      matches,
-      ai_passed,
-      status: "pending",
-      ocr_text_preview: preview,
-      signals: { ...signals, provider: "ocrspace" },
-    }).eq("id", requestId).eq("user_id", userId);
+    const buf = await downloadFile(signed.signedUrl);
+    const text = await ocrSpace(buf);
 
-    return res.status(200).json({ ok: true, ai_passed: true });
+    const preview = text.slice(0, 700);
+    const { passed, hits } = keywordMatch(text);
+
+    const signals = {
+      worker_id: WORKER_ID,
+      attempt: attemptCount,
+      keyword_hits: hits,
+      text_len: text.length,
+      ts: new Date().toISOString(),
+    };
+
+    if (!passed) {
+      await finalizeRejected(requestId, userId, "ai_keyword_not_matched", { signals });
+      return;
+    }
+
+    await finalizePending(requestId, userId, { preview, matches: hits, signals });
   } catch (e: any) {
-    await supabaseAdmin.from("verification_requests").update({
-      status: "pending", // или "ocr_failed"
-      admin_comment: `OCR failed: ${e?.message ?? "unknown"}`,
-      signals: { stage: "failed" },
-    }).eq("id", requestId).eq("user_id", userId);
+    const msg = String(e?.message || "processing_error");
 
-    return res.status(500).json({ error: e?.message ?? "OCR worker error" });
-  } finally {
-    fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    if (attemptCount >= MAX_ATTEMPTS) {
+      await finalizeRejected(requestId, userId, `max_attempts:${msg}`, {
+        signals: { worker_id: WORKER_ID, attempt: attemptCount },
+      });
+      return;
+    }
+
+    await retryLater(requestId, attemptCount, msg);
+  }
+}
+
+async function claimBatch(limit: number) {
+  const { data, error } = await supabaseAdmin.rpc("claim_verification_jobs", {
+    p_limit: limit,
+    p_worker_id: WORKER_ID,
+  });
+  if (error) throw error;
+  return (data || []) as any[];
+}
+
+async function claimById(requestId: string) {
+  const { data, error } = await supabaseAdmin.rpc("claim_verification_job_by_id", {
+    p_request_id: requestId, // ✅ uuid string
+    p_worker_id: WORKER_ID,
+  });
+  if (error) throw error;
+  return (data || []) as any[];
+}
+
+async function runOnce(opts: { requestId?: string } = {}) {
+  const jobs = opts.requestId ? await claimById(opts.requestId) : await claimBatch(BATCH_SIZE);
+  for (const job of jobs) await processJob(job);
+  return jobs.length;
+}
+
+app.get("/health", (_req, res) => res.json({ ok: true, worker: WORKER_ID }));
+
+app.post("/process-ocr", requireWorkerAuth, async (req, res) => {
+  try {
+    const requestId = req.body?.requestId ? String(req.body.requestId) : undefined;
+    const count = await runOnce({ requestId });
+    res.json({ ok: true, claimed: count });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e?.message ?? "error" });
   }
 });
 
-app.get("/health", (_, res) => res.json({ ok: true }));
+app.listen(Number(process.env.PORT || 3000), () => {
+  setInterval(() => {
+    runOnce().catch(() => {});
+  }, POLL_INTERVAL_MS);
 
-const port = Number(process.env.PORT || 3000);
-app.listen(port, () => console.log("OCR worker running on", port));
+  runOnce().catch(() => {});
+  // eslint-disable-next-line no-console
+  console.log(`OCR worker up: ${WORKER_ID}`);
+});
