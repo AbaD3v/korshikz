@@ -207,7 +207,7 @@ useEffect(() => {
 {isOwner && (
   <div className="mb-12">
   {isOwner && authUserId ? (
-    <StudentVerifyUploader userId={authUserId} />
+    <StudentVerifyUploader />
   ) : null}
 </div>
 )}
