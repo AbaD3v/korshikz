@@ -13,8 +13,8 @@ const BUCKET = process.env.VERIFICATION_BUCKET || "verification-docs";
 const RENDER_OCR_SECRET = process.env.RENDER_OCR_SECRET!;
 const WORKER_ID = process.env.WORKER_ID || `worker-${Math.random().toString(16).slice(2)}`;
 
-const OCRAPI_KEY = process.env.OCRAPI_KEY || ""; // main
-const OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY || ""; // fallback
+const OCRAPI_KEY = process.env.OCRAPI_KEY || "";
+const OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY || "";
 
 const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS || 45000);
 const DOWNLOAD_TIMEOUT_MS = Number(process.env.DOWNLOAD_TIMEOUT_MS || 20000);
@@ -34,8 +34,10 @@ const KEYWORDS = (process.env.OCR_KEYWORDS || "student,студент,униве
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
+
 console.log("OCRAPI_KEY exists:", !!process.env.OCRAPI_KEY);
 console.log("OCR_SPACE_API_KEY exists:", !!process.env.OCR_SPACE_API_KEY);
+
 function requireWorkerAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
   const h = req.headers.authorization || "";
   const m = h.match(/^Bearer\s+(.+)$/i);
@@ -44,9 +46,12 @@ function requireWorkerAuth(req: express.Request, res: express.Response, next: ex
 }
 
 function backoff(attempt: number) {
-  // 15s, 60s, 5m
   const seconds = [15, 60, 300][Math.min(attempt - 1, 2)];
   return new Date(Date.now() + seconds * 1000);
+}
+
+async function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function fetchWithTimeout(url: string, init: any, timeoutMs: number) {
@@ -59,10 +64,6 @@ async function fetchWithTimeout(url: string, init: any, timeoutMs: number) {
   }
 }
 
-async function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 async function downloadFile(signedUrl: string): Promise<Buffer> {
   const res = await fetchWithTimeout(signedUrl, { method: "GET" }, DOWNLOAD_TIMEOUT_MS);
   if (!res.ok) throw new Error(`download_failed:${res.status}`);
@@ -70,13 +71,14 @@ async function downloadFile(signedUrl: string): Promise<Buffer> {
 }
 
 /**
- * OCRAPI.cloud (submit + poll). We treat response structure defensively.
- * Endpoints (per OCRAPI.cloud docs/site): /api/v1/jobs and /api/v1/jobs/{job_id}
+ * OCRAPI.cloud submit + poll. Logs everything important.
  */
 async function ocrOcrApiCloud(fileUrl: string): Promise<{ text: string; provider: string }> {
   if (!OCRAPI_KEY) throw new Error("ocrapi_missing_key");
 
-  const submit = await fetchWithTimeout(
+  console.log("[OCRAPI] submit job...");
+
+  const submitRes = await fetchWithTimeout(
     "https://ocrapi.cloud/api/v1/jobs",
     {
       method: "POST",
@@ -93,28 +95,53 @@ async function ocrOcrApiCloud(fileUrl: string): Promise<{ text: string; provider
     15000
   );
 
-  if (!submit.ok) throw new Error(`ocrapi_submit_http_${submit.status}`);
-  const submitJson: any = await submit.json().catch(() => null);
+  const submitBodyText = await submitRes.text().catch(() => "");
+  console.log("[OCRAPI] submit status:", submitRes.status);
+  if (submitBodyText) console.log("[OCRAPI] submit body:", submitBodyText.slice(0, 500));
+
+  if (!submitRes.ok) throw new Error(`ocrapi_submit_http_${submitRes.status}`);
+
+  let submitJson: any = null;
+  try {
+    submitJson = submitBodyText ? JSON.parse(submitBodyText) : await submitRes.json();
+  } catch {
+    // ignore
+  }
 
   const jobId = String(submitJson?.job_id || submitJson?.id || "");
   if (!jobId) throw new Error("ocrapi_no_job_id");
+
+  console.log("[OCRAPI] job_id:", jobId);
 
   const started = Date.now();
   while (Date.now() - started < OCRAPI_MAX_WAIT_MS) {
     await sleep(OCRAPI_POLL_MS);
 
-    const poll = await fetchWithTimeout(
+    const pollRes = await fetchWithTimeout(
       `https://ocrapi.cloud/api/v1/jobs/${encodeURIComponent(jobId)}`,
       { method: "GET", headers: { Authorization: `Bearer ${OCRAPI_KEY}` } },
       15000
     );
 
-    if (!poll.ok) throw new Error(`ocrapi_poll_http_${poll.status}`);
-    const pollJson: any = await poll.json().catch(() => null);
+    const pollText = await pollRes.text().catch(() => "");
+    console.log("[OCRAPI] poll status:", pollRes.status);
 
-    const status = String(pollJson?.status || "").toLowerCase();
+    if (!pollRes.ok) {
+      if (pollText) console.log("[OCRAPI] poll body:", pollText.slice(0, 300));
+      throw new Error(`ocrapi_poll_http_${pollRes.status}`);
+    }
 
-    if (["completed", "complete", "done", "finished", "success"].includes(status)) {
+    let pollJson: any = null;
+    try {
+      pollJson = pollText ? JSON.parse(pollText) : await pollRes.json();
+    } catch {
+      // ignore
+    }
+
+    const st = String(pollJson?.status || "").toLowerCase();
+    console.log("[OCRAPI] job status:", st);
+
+    if (["completed", "complete", "done", "finished", "success"].includes(st)) {
       const candidates: any[] = [
         pollJson?.text,
         pollJson?.result?.text,
@@ -128,19 +155,22 @@ async function ocrOcrApiCloud(fileUrl: string): Promise<{ text: string; provider
       const text =
         candidates.find((x) => typeof x === "string" && x.trim().length > 0) || "";
 
+      console.log("[OCRAPI] completed. text_len:", String(text).length);
       return { text: String(text), provider: "ocrapi.cloud" };
     }
 
-    if (["failed", "error"].includes(status)) {
+    if (["failed", "error"].includes(st)) {
+      console.log("[OCRAPI] failed payload:", JSON.stringify(pollJson)?.slice(0, 500));
       throw new Error(`ocrapi_failed:${pollJson?.error || pollJson?.message || "unknown"}`);
     }
-    // pending/processing -> continue
   }
 
   throw new Error("ocrapi_timeout");
 }
 
-/** OCR.Space fallback */
+/**
+ * OCR.Space fallback (multipart)
+ */
 async function ocrOcrSpace(buffer: Buffer): Promise<{ text: string; provider: string }> {
   if (!OCR_SPACE_API_KEY) throw new Error("ocrspace_missing_key");
 
@@ -165,22 +195,26 @@ async function ocrOcrSpace(buffer: Buffer): Promise<{ text: string; provider: st
     );
 
     if (!res.ok) throw new Error(`ocrspace_http_${res.status}`);
-    const json: any = await res.json();
 
+    const json: any = await res.json();
     if (json?.IsErroredOnProcessing) {
       const msg = json?.ErrorMessage?.[0] || "ocr_error";
       throw new Error(`ocrspace_failed:${msg}`);
     }
-
     return String(json?.ParsedResults?.[0]?.ParsedText || "");
   };
 
   try {
-    return { text: await tryOnce("2"), provider: "ocr.space" };
+    const t = await tryOnce("2");
+    console.log("[OCRSPACE] ok engine=2 len:", t.length);
+    return { text: t, provider: "ocr.space" };
   } catch (e: any) {
     const msg = String(e?.message || "");
+    console.log("[OCRSPACE] failed engine=2:", msg);
     if (msg.startsWith("ocrspace_http_5")) {
-      return { text: await tryOnce("1"), provider: "ocr.space" };
+      const t = await tryOnce("1");
+      console.log("[OCRSPACE] ok engine=1 len:", t.length);
+      return { text: t, provider: "ocr.space" };
     }
     throw e;
   }
@@ -205,7 +239,7 @@ async function finalizePending(requestId: string, userId: string, payload: any) 
       locked_at: null,
       locked_by: null,
       next_retry_at: null,
-      last_error: null,
+      last_error: payload.last_error ?? null,
     })
     .eq("id", requestId);
 
@@ -241,6 +275,8 @@ async function processJob(job: any) {
   const filePath = String(job.file_path);
   const attemptCount = Number(job.attempt_count);
 
+  console.log("[JOB] start", { requestId, attemptCount, filePath });
+
   try {
     const { data: signed, error: signErr } = await supabaseAdmin.storage
       .from(BUCKET)
@@ -252,9 +288,9 @@ async function processJob(job: any) {
 
     const signedUrl = signed.signedUrl;
 
-    // ---- OCR providers chain ----
     let text = "";
     let provider = "none";
+    let ocrapiErr: string | null = null;
 
     // main: OCRAPI.cloud
     try {
@@ -262,7 +298,10 @@ async function processJob(job: any) {
       text = r.text;
       provider = r.provider;
     } catch (e1: any) {
-      // fallback: OCR.Space (download + multipart)
+      ocrapiErr = String(e1?.message || e1);
+      console.log("[OCRAPI] failed:", ocrapiErr);
+
+      // fallback: OCR.Space
       const buf = await downloadFile(signedUrl);
       const r2 = await ocrOcrSpace(buf);
       text = r2.text;
@@ -276,24 +315,27 @@ async function processJob(job: any) {
       worker_id: WORKER_ID,
       attempt: attemptCount,
       ocr_provider: provider,
+      ocrapi_error: ocrapiErr,
       keyword_hits: hits,
       text_len: (text || "").length,
       ts: new Date().toISOString(),
     };
 
-    // ✅ Финальное правило: НИКОГДА не auto-reject из воркера.
-    // Даже слабое OCR -> pending админу.
+    console.log("[JOB] done OCR", { requestId, provider, textLen: (text || "").length, passed });
+
+    // ✅ NEVER auto-reject. Always pending for admin.
     await finalizePending(requestId, userId, {
       ai_passed: passed,
       preview,
       matches: hits,
       signals: passed ? signals : { ...signals, weak_match: true },
+      last_error: provider === "none" ? "no_provider" : null,
     });
   } catch (e: any) {
     const msg = String(e?.message || "processing_error");
+    console.log("[JOB] error", { requestId, msg });
 
-    // ✅ Free-tier resilience: если OCR/скачивание/подпись падают — НЕ держим юзера.
-    // Быстро деградируем в pending админу.
+    // ✅ degrade fast: pending for admin on OCR-related failures
     if (isOcrRelatedError(msg)) {
       await finalizePending(requestId, userId, {
         ai_passed: false,
@@ -307,11 +349,11 @@ async function processJob(job: any) {
           degraded: true,
           ts: new Date().toISOString(),
         },
+        last_error: msg,
       });
       return;
     }
 
-    // прочие ошибки — ретраи ограниченно
     if (attemptCount >= MAX_ATTEMPTS) {
       await finalizePending(requestId, userId, {
         ai_passed: false,
@@ -325,6 +367,7 @@ async function processJob(job: any) {
           degraded: true,
           ts: new Date().toISOString(),
         },
+        last_error: msg,
       });
       return;
     }
