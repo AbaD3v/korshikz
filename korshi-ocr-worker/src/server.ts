@@ -13,8 +13,8 @@ const BUCKET = process.env.VERIFICATION_BUCKET || "verification-docs";
 const RENDER_OCR_SECRET = process.env.RENDER_OCR_SECRET!;
 const WORKER_ID = process.env.WORKER_ID || `worker-${Math.random().toString(16).slice(2)}`;
 
-const OCRAPI_KEY = process.env.OCRAPI_KEY!; // OCRAPI.cloud
-const OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY!; // fallback
+const OCRAPI_KEY = process.env.OCRAPI_KEY || ""; // main
+const OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY || ""; // fallback
 
 const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS || 45000);
 const DOWNLOAD_TIMEOUT_MS = Number(process.env.DOWNLOAD_TIMEOUT_MS || 20000);
@@ -34,7 +34,8 @@ const KEYWORDS = (process.env.OCR_KEYWORDS || "student,студент,униве
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
-
+console.log("OCRAPI_KEY exists:", !!process.env.OCRAPI_KEY);
+console.log("OCR_SPACE_API_KEY exists:", !!process.env.OCR_SPACE_API_KEY);
 function requireWorkerAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
   const h = req.headers.authorization || "";
   const m = h.match(/^Bearer\s+(.+)$/i);
@@ -58,6 +59,10 @@ async function fetchWithTimeout(url: string, init: any, timeoutMs: number) {
   }
 }
 
+async function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function downloadFile(signedUrl: string): Promise<Buffer> {
   const res = await fetchWithTimeout(signedUrl, { method: "GET" }, DOWNLOAD_TIMEOUT_MS);
   if (!res.ok) throw new Error(`download_failed:${res.status}`);
@@ -65,11 +70,12 @@ async function downloadFile(signedUrl: string): Promise<Buffer> {
 }
 
 /**
- * OCRAPI.cloud: async jobs (submit + poll). :contentReference[oaicite:2]{index=2}
- * POST https://ocrapi.cloud/api/v1/jobs { file_url, language, extract_tables }
- * Then poll GET https://ocrapi.cloud/api/v1/jobs/{job_id}
+ * OCRAPI.cloud (submit + poll). We treat response structure defensively.
+ * Endpoints (per OCRAPI.cloud docs/site): /api/v1/jobs and /api/v1/jobs/{job_id}
  */
 async function ocrOcrApiCloud(fileUrl: string): Promise<{ text: string; provider: string }> {
+  if (!OCRAPI_KEY) throw new Error("ocrapi_missing_key");
+
   const submit = await fetchWithTimeout(
     "https://ocrapi.cloud/api/v1/jobs",
     {
@@ -90,19 +96,16 @@ async function ocrOcrApiCloud(fileUrl: string): Promise<{ text: string; provider
   if (!submit.ok) throw new Error(`ocrapi_submit_http_${submit.status}`);
   const submitJson: any = await submit.json().catch(() => null);
 
-  const jobId = String(submitJson?.job_id || "");
+  const jobId = String(submitJson?.job_id || submitJson?.id || "");
   if (!jobId) throw new Error("ocrapi_no_job_id");
 
   const started = Date.now();
   while (Date.now() - started < OCRAPI_MAX_WAIT_MS) {
-    await new Promise((r) => setTimeout(r, OCRAPI_POLL_MS));
+    await sleep(OCRAPI_POLL_MS);
 
     const poll = await fetchWithTimeout(
       `https://ocrapi.cloud/api/v1/jobs/${encodeURIComponent(jobId)}`,
-      {
-        method: "GET",
-        headers: { Authorization: `Bearer ${OCRAPI_KEY}` },
-      },
+      { method: "GET", headers: { Authorization: `Bearer ${OCRAPI_KEY}` } },
       15000
     );
 
@@ -110,32 +113,37 @@ async function ocrOcrApiCloud(fileUrl: string): Promise<{ text: string; provider
     const pollJson: any = await poll.json().catch(() => null);
 
     const status = String(pollJson?.status || "").toLowerCase();
-    if (status === "completed" || status === "complete" || status === "done") {
-      // NOTE: структура результата может отличаться, поэтому берём максимально безопасно:
-      // пытаемся собрать текст из нескольких возможных полей
+
+    if (["completed", "complete", "done", "finished", "success"].includes(status)) {
       const candidates: any[] = [
         pollJson?.text,
         pollJson?.result?.text,
         pollJson?.result?.full_text,
         pollJson?.data?.text,
-        pollJson?.pages?.map((p: any) => p?.text).filter(Boolean)?.join("\n"),
+        Array.isArray(pollJson?.pages)
+          ? pollJson.pages.map((p: any) => p?.text).filter(Boolean).join("\n")
+          : null,
       ];
-      const text = candidates.find((x) => typeof x === "string" && x.trim().length > 0) || "";
-      return { text: String(text || ""), provider: "ocrapi.cloud" };
+
+      const text =
+        candidates.find((x) => typeof x === "string" && x.trim().length > 0) || "";
+
+      return { text: String(text), provider: "ocrapi.cloud" };
     }
 
-    if (status === "failed" || status === "error") {
-      throw new Error(`ocrapi_failed:${pollJson?.error || "unknown"}`);
+    if (["failed", "error"].includes(status)) {
+      throw new Error(`ocrapi_failed:${pollJson?.error || pollJson?.message || "unknown"}`);
     }
-
     // pending/processing -> continue
   }
 
   throw new Error("ocrapi_timeout");
 }
 
-// OCR.Space fallback (multipart)
+/** OCR.Space fallback */
 async function ocrOcrSpace(buffer: Buffer): Promise<{ text: string; provider: string }> {
+  if (!OCR_SPACE_API_KEY) throw new Error("ocrspace_missing_key");
+
   const tryOnce = async (engine: "1" | "2") => {
     const form = new FormData();
     form.append("apikey", OCR_SPACE_API_KEY);
@@ -179,7 +187,7 @@ async function ocrOcrSpace(buffer: Buffer): Promise<{ text: string; provider: st
 }
 
 function keywordMatch(text: string) {
-  const t = text.toLowerCase();
+  const t = (text || "").toLowerCase();
   const hits = KEYWORDS.filter((k) => t.includes(k));
   const passed = hits.length >= 2;
   return { passed, hits };
@@ -191,9 +199,9 @@ async function finalizePending(requestId: string, userId: string, payload: any) 
     .update({
       status: "pending",
       ai_passed: Boolean(payload.ai_passed),
-      matches: payload.matches,
-      ocr_text_preview: payload.preview,
-      signals: payload.signals,
+      matches: payload.matches ?? [],
+      ocr_text_preview: payload.preview ?? null,
+      signals: payload.signals ?? {},
       locked_at: null,
       locked_by: null,
       next_retry_at: null,
@@ -218,6 +226,15 @@ async function retryLater(requestId: string, attemptCount: number, err: string) 
     .eq("id", requestId);
 }
 
+function isOcrRelatedError(msg: string) {
+  return (
+    msg.includes("ocrapi_") ||
+    msg.includes("ocrspace_") ||
+    msg.includes("download_failed") ||
+    msg.includes("signed_url_failed")
+  );
+}
+
 async function processJob(job: any) {
   const requestId = String(job.id);
   const userId = String(job.user_id);
@@ -229,50 +246,55 @@ async function processJob(job: any) {
       .from(BUCKET)
       .createSignedUrl(filePath, 120);
 
-    if (signErr || !signed?.signedUrl) throw new Error(`signed_url_failed:${signErr?.message || "no_url"}`);
+    if (signErr || !signed?.signedUrl) {
+      throw new Error(`signed_url_failed:${signErr?.message || "no_url"}`);
+    }
 
     const signedUrl = signed.signedUrl;
 
-    // 1) OCRAPI.cloud main
+    // ---- OCR providers chain ----
     let text = "";
-    let provider = "";
+    let provider = "none";
 
+    // main: OCRAPI.cloud
     try {
       const r = await ocrOcrApiCloud(signedUrl);
       text = r.text;
       provider = r.provider;
-    } catch (e: any) {
-      // 2) fallback OCR.Space (download -> multipart)
+    } catch (e1: any) {
+      // fallback: OCR.Space (download + multipart)
       const buf = await downloadFile(signedUrl);
       const r2 = await ocrOcrSpace(buf);
       text = r2.text;
       provider = r2.provider;
     }
 
-    const preview = (text || "").slice(0, 900);
+    const preview = (text || "").slice(0, 900) || null;
     const { passed, hits } = keywordMatch(text || "");
 
     const signals = {
       worker_id: WORKER_ID,
       attempt: attemptCount,
+      ocr_provider: provider,
       keyword_hits: hits,
       text_len: (text || "").length,
-      ocr_provider: provider,
       ts: new Date().toISOString(),
     };
 
-    // Free OCR: никогда не auto-reject только по keyword. Всё -> admin pending.
+    // ✅ Финальное правило: НИКОГДА не auto-reject из воркера.
+    // Даже слабое OCR -> pending админу.
     await finalizePending(requestId, userId, {
       ai_passed: passed,
-      preview: preview || null,
+      preview,
       matches: hits,
       signals: passed ? signals : { ...signals, weak_match: true },
     });
   } catch (e: any) {
     const msg = String(e?.message || "processing_error");
 
-    // Если OCR стабильно лежит — быстро деградируем в pending, чтобы юзер не ждал
-    if (msg.includes("ocrapi_") || msg.includes("ocrspace_") || msg.includes("ocr_")) {
+    // ✅ Free-tier resilience: если OCR/скачивание/подпись падают — НЕ держим юзера.
+    // Быстро деградируем в pending админу.
+    if (isOcrRelatedError(msg)) {
       await finalizePending(requestId, userId, {
         ai_passed: false,
         preview: null,
@@ -280,20 +302,29 @@ async function processJob(job: any) {
         signals: {
           worker_id: WORKER_ID,
           attempt: attemptCount,
+          ocr_provider: "none",
           last_error: msg,
           degraded: true,
-          note: "OCR provider unstable -> sent to admin",
+          ts: new Date().toISOString(),
         },
       });
       return;
     }
 
+    // прочие ошибки — ретраи ограниченно
     if (attemptCount >= MAX_ATTEMPTS) {
       await finalizePending(requestId, userId, {
         ai_passed: false,
         preview: null,
         matches: [],
-        signals: { worker_id: WORKER_ID, attempt: attemptCount, last_error: msg, degraded: true },
+        signals: {
+          worker_id: WORKER_ID,
+          attempt: attemptCount,
+          ocr_provider: "none",
+          last_error: msg,
+          degraded: true,
+          ts: new Date().toISOString(),
+        },
       });
       return;
     }

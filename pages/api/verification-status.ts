@@ -65,6 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         attemptCount: data.attempt_count ?? 0,
         nextRetryAt: data.next_retry_at,
         lastError: data.last_error,
+        ocrProvider: data?.signals?.ocr_provider ?? null,
       },
     });
   } catch (e: any) {
