@@ -4,7 +4,6 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
 const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
@@ -46,12 +45,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const { data, error } = await supabaseAdmin
       .from("verification_requests")
-      .select("id,status,ai_passed,ocr_text_preview,matches,signals,admin_comment,created_at,updated_at")
+      .select(
+        "id,status,ai_passed,ocr_text_preview,matches,signals,admin_comment,created_at,updated_at,attempt_count,next_retry_at,last_error"
+      )
       .eq("id", requestId)
       .eq("user_id", userId)
       .maybeSingle();
 
-    // не раскрываем детали (не найдено / не твоя / etc)
     if (error || !data) return res.status(404).json({ error: "Not found" });
 
     const st = String(data.status || "").toLowerCase();
@@ -61,6 +61,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       request: { ...data, status: st },
       uiState: mapUi(st),
       retryAfterMs: st === "pending_ocr" || st === "processing" ? 3000 : 10000,
+      meta: {
+        attemptCount: data.attempt_count ?? 0,
+        nextRetryAt: data.next_retry_at,
+        lastError: data.last_error,
+      },
     });
   } catch (e: any) {
     return res.status(500).json({ error: e?.message ?? "Server error" });
