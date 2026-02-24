@@ -4,15 +4,18 @@ import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/hooks/utils/supabase/client";
 import { FileCheck, Loader2, ShieldCheck, AlertCircle, Hourglass } from "lucide-react";
 
-type Status =
-  | "idle"
-  | "uploading"
-  | "processing" // OCR
-  | "pending" // admin
-  | "verified"
-  | "error";
+type Status = "idle" | "uploading" | "processing" | "pending" | "verified" | "error";
 
 const LS_KEY = "korshi_verify_request_id";
+const MAX_ATTEMPTS = 5;
+
+function fmtCountdownMs(ms: number) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m <= 0) return `${r}с`;
+  return `${m}м ${r}с`;
+}
 
 export default function StudentVerifyUploader() {
   const [status, setStatus] = useState<Status>("idle");
@@ -46,6 +49,18 @@ export default function StudentVerifyUploader() {
     return user.id;
   };
 
+  const clearLocalRequest = () => {
+    localStorage.removeItem(LS_KEY);
+    setRequestId(null);
+  };
+
+  const setTerminalError = (text: string) => {
+    stopPolling();
+    clearLocalRequest();
+    setStatus("error");
+    setMessage(text);
+  };
+
   const refreshProfile = async () => {
     const userId = await getAuthedUserId();
 
@@ -62,32 +77,21 @@ export default function StudentVerifyUploader() {
 
     if (isVerified) {
       stopPolling();
-      localStorage.removeItem(LS_KEY);
-      setRequestId(null);
-
+      clearLocalRequest();
       setStatus("verified");
       setMessage("Ваш статус студента подтвержден администратором.");
       return;
     }
 
-    // pending в профиле = заявка существует и ждёт решения
+    // profile.pending = заявка точно в админке
     if (vStatus === "pending") {
       setStatus("pending");
       setMessage("Заявка отправлена. Ожидайте решения администратора.");
       return;
     }
 
-    // rejected/прочее — пусть будет idle (заявка могла быть удалена/сброшена)
     setStatus("idle");
     setMessage("");
-  };
-
-  const setTerminalError = (text: string) => {
-    stopPolling();
-    localStorage.removeItem(LS_KEY);
-    setRequestId(null);
-    setStatus("error");
-    setMessage(text);
   };
 
   const startPollingRequest = (rid: string) => {
@@ -98,45 +102,52 @@ export default function StudentVerifyUploader() {
         const token = await getToken();
         if (!token) return;
 
-        const res = await fetch(
-          `/api/verification-status?requestId=${encodeURIComponent(rid)}`,
-          {
-            method: "GET",
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+        const res = await fetch(`/api/verification-status?requestId=${encodeURIComponent(rid)}`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
-        // если что-то пошло не так — не рушим UI, попробуем по профилю
+        // если API временно недоступен — fallback по профилю, UI не роняем
         if (!res.ok) {
           await refreshProfile().catch(() => {});
           return;
         }
 
         const json = await res.json().catch(() => null);
-
         const req = json?.request;
         const st = String(req?.status || "").toLowerCase();
 
-        // пока OCR
         if (st === "pending_ocr" || st === "processing") {
+          const attemptCount = Number(json?.meta?.attemptCount ?? req?.attempt_count ?? 0);
+          const nextRetryAtRaw = json?.meta?.nextRetryAt ?? req?.next_retry_at;
+          const lastError = String(json?.meta?.lastError ?? req?.last_error ?? "");
+
           setStatus("processing");
-          setMessage("Проверяем документ (OCR)…");
+
+          // если есть next_retry_at — покажем таймер
+          if (nextRetryAtRaw) {
+            const nextMs = new Date(String(nextRetryAtRaw)).getTime() - Date.now();
+            const left = fmtCountdownMs(nextMs);
+            const att = attemptCount ? `Попытка ${attemptCount}/${MAX_ATTEMPTS}.` : "";
+            const err = lastError ? ` (${lastError})` : "";
+            setMessage(`OCR временно недоступен. Повторная попытка через ${left}. ${att}${err}`);
+          } else {
+            const att = attemptCount ? ` (попытка ${attemptCount}/${MAX_ATTEMPTS})` : "";
+            setMessage(`Проверяем документ (OCR)…${att}`);
+          }
+
           return;
         }
 
-        // ждём админа
         if (st === "pending") {
           setStatus("pending");
           setMessage("Заявка отправлена. Ожидайте решения администратора.");
           return;
         }
 
-        // terminal
         if (st === "approved") {
           stopPolling();
-          localStorage.removeItem(LS_KEY);
-          setRequestId(null);
-
+          clearLocalRequest();
           setStatus("verified");
           setMessage("Ваш статус студента подтвержден администратором.");
           return;
@@ -147,15 +158,14 @@ export default function StudentVerifyUploader() {
           return;
         }
 
-        // неожиданный статус — fallback по профилю
+        // неожиданный статус — сверим профиль
         await refreshProfile().catch(() => {});
-      } catch (e) {
+      } catch {
         // silent
       }
     }, 3000);
   };
 
-  // init
   useEffect(() => {
     let cancelled = false;
 
@@ -163,7 +173,6 @@ export default function StudentVerifyUploader() {
       try {
         setLoading(true);
 
-        // 1) восстановим requestId (если был)
         const saved = typeof window !== "undefined" ? localStorage.getItem(LS_KEY) : null;
         if (saved) {
           setRequestId(saved);
@@ -172,9 +181,8 @@ export default function StudentVerifyUploader() {
           startPollingRequest(saved);
         }
 
-        // 2) проверим профиль
         await refreshProfile();
-      } catch (e) {
+      } catch {
         // silent
       } finally {
         if (!cancelled) setLoading(false);
@@ -194,7 +202,7 @@ export default function StudentVerifyUploader() {
       if (!file) return;
       event.target.value = "";
 
-      // Если уже есть активная заявка — не спамим
+      // если уже в процессе — не спамим
       if (status === "pending" || status === "processing") return;
 
       const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
@@ -222,8 +230,7 @@ export default function StudentVerifyUploader() {
 
       const token = await getToken();
       if (!token) {
-        setStatus("error");
-        setMessage("Сессия истекла. Перезайдите и попробуйте снова.");
+        setTerminalError("Сессия истекла. Перезайдите и попробуйте снова.");
         return;
       }
 
@@ -246,16 +253,15 @@ export default function StudentVerifyUploader() {
         return;
       }
 
-      // ✅ важное: у тебя сейчас приходит { requestId: 'uuid' }
       const rid = String(result?.requestId || "");
-      if (rid) {
-        setRequestId(rid);
-        localStorage.setItem(LS_KEY, rid);
-        startPollingRequest(rid);
+      if (!rid) {
+        setTerminalError("Не удалось отправить документ на проверку.");
         return;
       }
 
-      setTerminalError("Не удалось отправить документ на проверку.");
+      setRequestId(rid);
+      localStorage.setItem(LS_KEY, rid);
+      startPollingRequest(rid);
     } catch (e: any) {
       setTerminalError(e?.message || "Ошибка связи с сервером");
     }
@@ -303,7 +309,7 @@ export default function StudentVerifyUploader() {
       <div className="p-6 border rounded-2xl flex flex-col items-center justify-center gap-3 bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800">
         <Loader2 className="animate-spin text-indigo-600" size={48} strokeWidth={1.5} />
         <p className="font-bold text-lg text-neutral-800 dark:text-neutral-200">Проверяем документ…</p>
-        <p className="text-sm text-neutral-500 text-center max-w-[260px]">
+        <p className="text-sm text-neutral-500 text-center max-w-[300px]">
           {message || "Идёт распознавание текста (OCR). Пожалуйста, подождите…"}
         </p>
         {requestId && (
@@ -319,9 +325,7 @@ export default function StudentVerifyUploader() {
     <div className="p-6 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-4 transition-all bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800">
       <div className="flex flex-col items-center gap-2">
         {status === "idle" && <FileCheck className="text-neutral-300" size={48} strokeWidth={1.5} />}
-        {status === "uploading" && (
-          <Loader2 className="animate-spin text-indigo-600" size={48} strokeWidth={1.5} />
-        )}
+        {status === "uploading" && <Loader2 className="animate-spin text-indigo-600" size={48} strokeWidth={1.5} />}
         {status === "error" && <AlertCircle className="text-red-400" size={48} strokeWidth={1.5} />}
       </div>
 
@@ -329,7 +333,7 @@ export default function StudentVerifyUploader() {
         <p className="text-base font-semibold text-neutral-800 dark:text-neutral-200">
           {status === "error" ? "Проверка не прошла" : "Верификация студента"}
         </p>
-        <p className="text-sm text-neutral-500 mt-1 max-w-[260px]">
+        <p className="text-sm text-neutral-500 mt-1 max-w-[300px]">
           {message || "Загрузите фото студенческого билета (каз/рус) или PDF"}
         </p>
       </div>
