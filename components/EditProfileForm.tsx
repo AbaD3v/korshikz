@@ -1,130 +1,348 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
+interface Profile {
+  id: string;
+  full_name: string | null;
+  age: number | null;
+  university: string | null;
+  hobbies: string | null;
+  about_me: string | null;
+  pets: boolean | null;
+  smoking: boolean | null;
+  avatar_url: string | null;
+}
+
 interface EditProfileFormProps {
-  profile: any;
-  onSave: (data: any) => void;
+  profile: Profile;
+  onSave: (data: Profile) => void;
   onCancel: () => void;
 }
 
-export default function EditProfileForm({ profile, onSave, onCancel }: EditProfileFormProps) {
-  const [form, setForm] = useState({
-    full_name: profile.full_name || "",
-    age: profile.age || "",
-    university: profile.university || "",
-    hobbies: profile.hobbies || "",
-    bio: profile.bio || "",
-    pets: profile.pets || false,
-    smoking: profile.smoking || false,
-  });
+interface FormState {
+  full_name: string;
+  age: string;
+  university: string;
+  hobbies: string;
+  about_me: string;
+  pets: boolean;
+  smoking: boolean;
+}
 
+interface FormErrors {
+  full_name?: string;
+  age?: string;
+  university?: string;
+  about_me?: string;
+  avatar?: string;
+  general?: string;
+}
+
+export default function EditProfileForm({
+  profile,
+  onSave,
+  onCancel,
+}: EditProfileFormProps) {
+  const initialForm: FormState = useMemo(
+    () => ({
+      full_name: profile.full_name ?? "",
+      age: profile.age ? String(profile.age) : "",
+      university: profile.university ?? "",
+      hobbies: profile.hobbies ?? "",
+      about_me: profile.about_me ?? "",
+      pets: Boolean(profile.pets),
+      smoking: Boolean(profile.smoking),
+    }),
+    [profile]
+  );
+
+  const [form, setForm] = useState<FormState>(initialForm);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(
+    profile.avatar_url ?? null
+  );
   const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState<FormErrors>({});
 
-  const handleChange = (field: string, value: any) => {
+  useEffect(() => {
+    setForm(initialForm);
+    setAvatarPreview(profile.avatar_url ?? null);
+    setAvatarFile(null);
+    setErrors({});
+  }, [initialForm, profile.avatar_url]);
+
+  useEffect(() => {
+    if (!avatarFile) return;
+
+    const objectUrl = URL.createObjectURL(avatarFile);
+    setAvatarPreview(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [avatarFile]);
+
+  const isChanged = useMemo(() => {
+    return (
+      form.full_name !== initialForm.full_name ||
+      form.age !== initialForm.age ||
+      form.university !== initialForm.university ||
+      form.hobbies !== initialForm.hobbies ||
+      form.about_me !== initialForm.about_me ||
+      form.pets !== initialForm.pets ||
+      form.smoking !== initialForm.smoking ||
+      avatarFile !== null
+    );
+  }, [form, initialForm, avatarFile]);
+
+  const handleChange = <K extends keyof FormState>(field: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [field]: value }));
+    setErrors((prev) => ({ ...prev, [field]: undefined, general: undefined }));
+  };
+
+  const validateForm = () => {
+    const nextErrors: FormErrors = {};
+
+    const trimmedName = form.full_name.trim();
+    const trimmedUniversity = form.university.trim();
+    const trimmedAboutMe = form.about_me.trim();
+
+    if (!trimmedName) {
+      nextErrors.full_name = "Введите имя";
+    } else if (trimmedName.length < 2) {
+      nextErrors.full_name = "Имя слишком короткое";
+    }
+
+    if (form.age) {
+      const ageNumber = Number(form.age);
+      if (Number.isNaN(ageNumber)) {
+        nextErrors.age = "Возраст должен быть числом";
+      } else if (ageNumber < 16 || ageNumber > 100) {
+        nextErrors.age = "Возраст должен быть от 16 до 100";
+      }
+    }
+
+    if (trimmedUniversity.length > 100) {
+      nextErrors.university = "Слишком длинное название университета";
+    }
+
+    if (trimmedAboutMe.length > 300) {
+      nextErrors.about_me = "О себе должно быть не длиннее 300 символов";
+    }
+
+    if (avatarFile) {
+      const maxSizeMb = 3;
+      if (!avatarFile.type.startsWith("image/")) {
+        nextErrors.avatar = "Можно загружать только изображения";
+      } else if (avatarFile.size > maxSizeMb * 1024 * 1024) {
+        nextErrors.avatar = `Размер фото должен быть меньше ${maxSizeMb} МБ`;
+      }
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const uploadAvatar = async (file: File): Promise<string> => {
+    const fileExt = file.name.split(".").pop() || "jpg";
+    const fileName = `${profile.id}-${Date.now()}.${fileExt}`;
+    const filePath = `avatars/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: true,
+      });
+
+    if (uploadError) {
+      throw new Error(uploadError.message);
+    }
+
+    const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
+    return data.publicUrl;
   };
 
   const handleSubmit = async () => {
+    if (!validateForm()) return;
+
     setSaving(true);
+    setErrors({});
 
-    let avatar_url = profile.avatar_url || null;
+    try {
+      let avatar_url = profile.avatar_url ?? null;
 
-    if (avatarFile) {
-      const reader = new FileReader();
-      const base64 = await new Promise<string>((resolve) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.readAsDataURL(avatarFile);
+      if (avatarFile) {
+        avatar_url = await uploadAvatar(avatarFile);
+      }
+
+      const updatePayload = {
+        full_name: form.full_name.trim() || null,
+        age: form.age ? Number(form.age) : null,
+        university: form.university.trim() || null,
+        hobbies: form.hobbies.trim() || null,
+        about_me: form.about_me.trim() || null,
+        pets: form.pets,
+        smoking: form.smoking,
+        avatar_url,
+      };
+
+      const { error } = await supabase
+        .from("profiles")
+        .update(updatePayload)
+        .eq("id", profile.id);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      onSave({
+        ...profile,
+        ...updatePayload,
       });
-      avatar_url = base64;
+    } catch (err) {
+      setErrors({
+        general: err instanceof Error ? err.message : "Не удалось сохранить профиль",
+      });
+    } finally {
+      setSaving(false);
     }
-
-    const { error } = await supabase
-      .from("profiles")
-      .update({ ...form, avatar_url })
-      .eq("id", profile.id);
-
-    if (error) {
-      alert("Ошибка: " + error.message);
-    } else {
-      onSave({ ...profile, ...form, avatar_url });
-    }
-
-    setSaving(false);
   };
 
   return (
-    <div className="bg-white dark:bg-gray-900 p-4 border rounded-lg space-y-4">
-      <div className="flex gap-4">
-        <div>
-          <label className="text-sm font-medium">Аватар</label>
-          <input type="file" accept="image/*" onChange={(e) => setAvatarFile(e.target.files?.[0] || null)} />
-        </div>
-
-        <div className="flex-1 space-y-2">
-          <label className="block text-sm font-medium">Полное имя</label>
-          <input
-            className="w-full border p-2 rounded"
-            value={form.full_name}
-            onChange={(e) => handleChange("full_name", e.target.value)}
-          />
-
-          <label className="block text-sm font-medium">Возраст</label>
-          <input
-            className="w-full border p-2 rounded"
-            type="number"
-            value={form.age}
-            onChange={(e) => handleChange("age", e.target.value)}
-          />
-
-          <label className="block text-sm font-medium">Университет</label>
-          <input
-            className="w-full border p-2 rounded"
-            value={form.university}
-            onChange={(e) => handleChange("university", e.target.value)}
-          />
-        </div>
+    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className="mb-5">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+          Редактировать профиль
+        </h2>
       </div>
 
-      <div className="space-y-2">
-        <label className="block text-sm font-medium">Хобби</label>
-        <input
-          className="w-full border p-2 rounded"
-          value={form.hobbies}
-          onChange={(e) => handleChange("hobbies", e.target.value)}
-        />
+      <div className="space-y-6">
+        <div className="flex flex-col gap-5 md:flex-row">
+          <div className="md:w-56">
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
+              Аватар
+            </label>
 
-        <label className="block text-sm font-medium">Bio</label>
-        <textarea
-          className="w-full border p-2 rounded"
-          rows={3}
-          value={form.bio}
-          onChange={(e) => handleChange("bio", e.target.value)}
-        />
+            <div className="flex flex-col items-center rounded-2xl border border-dashed border-gray-300 p-4 dark:border-gray-700">
+              <div className="mb-3 h-28 w-28 overflow-hidden rounded-full border bg-gray-100 dark:bg-gray-800">
+                {avatarPreview ? (
+                  <img src={avatarPreview} alt="Аватар" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">
+                    Нет фото
+                  </div>
+                )}
+              </div>
 
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={form.pets} onChange={(e) => handleChange("pets", e.target.checked)} />
-          Питомцы
-        </label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setAvatarFile(e.target.files?.[0] || null)}
+                className="block w-full text-sm"
+              />
 
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={form.smoking} onChange={(e) => handleChange("smoking", e.target.checked)} />
-          Курение
-        </label>
-      </div>
+              {errors.avatar && (
+                <p className="mt-2 text-xs text-red-500">{errors.avatar}</p>
+              )}
+            </div>
+          </div>
 
-      <div className="flex gap-3">
-        <button
-          className="px-4 py-2 bg-emerald-600 text-white rounded-md"
-          disabled={saving}
-          onClick={handleSubmit}
-        >
-          {saving ? "Сохранение..." : "Сохранить"}
-        </button>
+          <div className="flex-1 space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Полное имя</label>
+              <input
+                className="w-full rounded-xl border px-3 py-2"
+                value={form.full_name}
+                onChange={(e) => handleChange("full_name", e.target.value)}
+              />
+              {errors.full_name && <p className="mt-1 text-xs text-red-500">{errors.full_name}</p>}
+            </div>
 
-        <button className="px-4 py-2 border rounded-md" onClick={onCancel}>
-          Отмена
-        </button>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium">Возраст</label>
+                <input
+                  className="w-full rounded-xl border px-3 py-2"
+                  type="number"
+                  value={form.age}
+                  onChange={(e) => handleChange("age", e.target.value)}
+                />
+                {errors.age && <p className="mt-1 text-xs text-red-500">{errors.age}</p>}
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium">Университет</label>
+                <input
+                  className="w-full rounded-xl border px-3 py-2"
+                  value={form.university}
+                  onChange={(e) => handleChange("university", e.target.value)}
+                />
+                {errors.university && (
+                  <p className="mt-1 text-xs text-red-500">{errors.university}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium">Хобби</label>
+            <input
+              className="w-full rounded-xl border px-3 py-2"
+              value={form.hobbies}
+              onChange={(e) => handleChange("hobbies", e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium">О себе</label>
+            <textarea
+              className="w-full rounded-xl border px-3 py-2"
+              rows={4}
+              value={form.about_me}
+              onChange={(e) => handleChange("about_me", e.target.value)}
+            />
+            {errors.about_me && <p className="mt-1 text-xs text-red-500">{errors.about_me}</p>}
+          </div>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.pets}
+              onChange={(e) => handleChange("pets", e.target.checked)}
+            />
+            Питомцы
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.smoking}
+              onChange={(e) => handleChange("smoking", e.target.checked)}
+            />
+            Курение
+          </label>
+        </div>
+
+        {errors.general && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {errors.general}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            className="rounded-xl bg-emerald-600 px-4 py-2 text-white disabled:opacity-60"
+            disabled={saving || !isChanged}
+            onClick={handleSubmit}
+          >
+            {saving ? "Сохранение..." : "Сохранить"}
+          </button>
+
+          <button className="rounded-xl border px-4 py-2" onClick={onCancel} disabled={saving}>
+            Отмена
+          </button>
+        </div>
       </div>
     </div>
   );
