@@ -21,27 +21,36 @@ import UserListings from "../../components/UserListings";
 import EditProfileForm from "../../components/EditProfileForm";
 
 /* --- Типы данных --- */
-export type ProfilePublicData = {
+export interface ProfilePublicData {
   id: string;
-  is_verified?: boolean;
-  full_name: string;
-  university: string;
-  faculty: string;
-  about_me: string;
-  budget: number;
-  status: string;
-  cleanliness_level: number;
-  noise_tolerance: number;
-  schedule_type: string;
-  preferred_location: string;
-  avatar_url?: string | null;
-  preferred_gender: string;
-  preferred_age_min: number;
-  preferred_age_max: number;
-  preferred_pets: boolean;
-  preferred_smoking: boolean;
-};
-
+  email?: string | null;
+  avatar_url: string | null;
+  username: string | null;
+  full_name: string | null;
+  age: number | null;
+  gender: string | null;
+  hobbies: string | null;
+  pets: boolean | null;
+  smoking: boolean | null;
+  university: string | null;
+  city: string | null;
+  faculty: string | null;
+  study_type: string | null;
+  about_me: string | null;
+  budget: number | null;
+  preferred_location: string | null;
+  preferred_gender: string | null;
+  preferred_age_min: number | null;
+  preferred_age_max: number | null;
+  preferred_pets: boolean | null;
+  preferred_smoking: boolean | null;
+  cleanliness_level: number | null;
+  noise_tolerance: number | null;
+  schedule_type: string | null;
+  status: string | null;
+  is_verified: boolean | null;
+  verification_status: string | null;
+}
 export type Listing = { 
   id: string | number; 
   title?: string; 
