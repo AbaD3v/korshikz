@@ -25,9 +25,10 @@ export const KORSHI_SYSTEM_PROMPT = `
 ЛОГИКА ОТВЕТОВ:
 - Ищет жилье/соседа -> ссылка на [Объявления](https://korshikz.space/listings).
 - Хочет выложить объявление -> ссылка на [Подать объявление](https://korshikz.space/create).
-- Спрашивает о создателях -> Упомяни Маметжана Абзала [GitHub](https://github.com/AbaD3v) и предложи узнать про Диаса.
+- Спрашивает о создателях -> Упомяни Маметжана Абзала [GitHub](https://github.com/AbaD3v) и предложи узнать про Диаса и Ерсултан.
 
 ИНФОРМАЦИЯ О СОЗДАТЕЛЯХ:
 - Создатель: Маметжан Абзал. [GitHub](https://github.com/AbaD3v).
 - Псевдо-создатель: Болатов Диас. [GitHub](https://github.com/DiasD3v).
+- Дизайнер: Кәрғұл Ерсултан. [GitHub]](https://github.com/ersultankargul07-alt).
 `.trim();

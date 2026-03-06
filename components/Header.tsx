@@ -149,6 +149,8 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
   const isActive = (href: string) =>
     router.pathname === href || router.pathname.startsWith(href + "/");
 
+  const logoSrc = theme === "dark" ? "/logo2.png" : "/logo.png";
+
   return (
     <header className="sticky top-0 z-50 w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200/50 dark:border-gray-800/50 transition-all">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
@@ -157,7 +159,13 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
         <div className="flex items-center gap-4 sm:gap-8 shrink-0">
           <Link href="/" className="group">
             <div className="relative w-24 sm:w-32 h-8 sm:h-10 rounded-xl overflow-hidden shadow-lg group-hover:scale-105 transition-transform">
-              <Image src="/logo.jpg" alt="Logo" fill className="object-cover" priority />
+              <Image
+                src={logoSrc}
+                alt="Logo"
+                fill
+                className="object-cover"
+                priority
+              />
             </div>
           </Link>
 
@@ -172,6 +180,7 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
               <option value="Алматы" className="dark:bg-gray-900">Алматы</option>
               <option value="Астана" className="dark:bg-gray-900">Астана</option>
               <option value="Шымкент" className="dark:bg-gray-900">Шымкент</option>
+              <option value="Караганда" className="dark:bg-gray-900">Караганда хуйня</option>
             </select>
           </div>
         </div>

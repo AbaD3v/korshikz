@@ -32,6 +32,18 @@ const DEFAULT_DEVS = [
       steam: "https://steamcommunity.com/profiles/76561199731766042/"
     },
   },
+  {
+    name: "Кәрғұл Ерсултан",
+    role: "UI/UX Designer | Frontend Developer",
+    bio: "Отвечаю за визуальную часть Korshi.kz. Моя цель — сделать так, чтобы каждый пользователь чувствовал себя комфортно и с удовольствием использовал наш сервис.",
+    photo: "https://github.com/ersultankargul07-alt.png",
+    skills: ["UI/UX Design", "Frontend Development"],
+    social: {
+      linkedin: "https://www.linkedin.com/in/ersultan-kargul-39a/",
+      github: "https://github.com/ersultankargul07-alt",
+      steam: "https://steamcommunity.com/profiles/76561199799199784/"
+    },
+  }
 ];
 
 const Avatar = ({ src, name, size = 160, isLead }: any) => (
