@@ -26,13 +26,7 @@ const MAX_ATTEMPTS = Number(process.env.MAX_ATTEMPTS || 3);
 const BATCH_SIZE = Number(process.env.BATCH_SIZE || 1);
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 10000);
 
-const KEYWORDS = (process.env.OCR_KEYWORDS || "student,студент,университет,university,студенческий,студбилет,идентификац")
-  .split(",")
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean);
-
-// Строже “якоря” — если есть хоть один, вероятность что это документ выше
-const ANCHORS = (process.env.OCR_ANCHORS || "студент,студенчес,университет,колледж,faculty,student,university,идентификац,карта,билет")
+const KEYWORDS = (process.env.OCR_KEYWORDS || "student,студент,университет,university,студенческий")
   .split(",")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
@@ -76,11 +70,14 @@ async function downloadFile(signedUrl: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
-/** OCRAPI.cloud submit + poll (logs). */
+/**
+ * OCRAPI.cloud submit + poll. Logs everything important.
+ */
 async function ocrOcrApiCloud(fileUrl: string): Promise<{ text: string; provider: string }> {
   if (!OCRAPI_KEY) throw new Error("ocrapi_missing_key");
 
   console.log("[OCRAPI] submit job...");
+
   const submitRes = await fetchWithTimeout(
     "https://ocrapi.cloud/api/v1/jobs",
     {
@@ -92,6 +89,7 @@ async function ocrOcrApiCloud(fileUrl: string): Promise<{ text: string; provider
       body: JSON.stringify({
         file_url: fileUrl,
         language: "ru",
+        extract_tables: false,
       }),
     },
     15000
@@ -106,7 +104,9 @@ async function ocrOcrApiCloud(fileUrl: string): Promise<{ text: string; provider
   let submitJson: any = null;
   try {
     submitJson = submitBodyText ? JSON.parse(submitBodyText) : await submitRes.json();
-  } catch {}
+  } catch {
+    // ignore
+  }
 
   const jobId = String(submitJson?.job_id || submitJson?.id || "");
   if (!jobId) throw new Error("ocrapi_no_job_id");
@@ -134,7 +134,9 @@ async function ocrOcrApiCloud(fileUrl: string): Promise<{ text: string; provider
     let pollJson: any = null;
     try {
       pollJson = pollText ? JSON.parse(pollText) : await pollRes.json();
-    } catch {}
+    } catch {
+      // ignore
+    }
 
     const st = String(pollJson?.status || "").toLowerCase();
     console.log("[OCRAPI] job status:", st);
@@ -166,7 +168,9 @@ async function ocrOcrApiCloud(fileUrl: string): Promise<{ text: string; provider
   throw new Error("ocrapi_timeout");
 }
 
-/** OCR.Space fallback */
+/**
+ * OCR.Space fallback (multipart)
+ */
 async function ocrOcrSpace(buffer: Buffer): Promise<{ text: string; provider: string }> {
   if (!OCR_SPACE_API_KEY) throw new Error("ocrspace_missing_key");
 
@@ -216,45 +220,11 @@ async function ocrOcrSpace(buffer: Buffer): Promise<{ text: string; provider: st
   }
 }
 
-function analyzeText(text: string) {
-  const t = text || "";
-  const lower = t.toLowerCase();
-
-  const letters = (t.match(/[a-zа-яёәіңғүұқөһ]/gi) || []).length;
-  const cyr = (t.match(/[а-яёәіңғүұқөһ]/gi) || []).length;
-  const lat = (t.match(/[a-z]/gi) || []).length;
-  const digits = (t.match(/[0-9]/g) || []).length;
-
-  const keywordHits = KEYWORDS.filter((k) => lower.includes(k));
-  const anchorHits = ANCHORS.filter((k) => lower.includes(k));
-
-  return { len: t.length, letters, cyr, lat, digits, keywordHits, anchorHits };
-}
-
-/**
- * Для ~15% ложных отказов:
- * - reject только при явном мусоре (очень коротко / почти нет букв / почти нет цифр)
- * - если текст нормальной длины -> не режем, уходит админу
- */
-function decideAutoReject(a: ReturnType<typeof analyzeText>) {
-  const hardReject =
-    a.len < 35 ||                 // почти пусто
-    a.letters < 12 ||             // нет текста
-    a.digits < 2 ||               // у доков почти всегда есть цифры/номера/даты
-    (a.anchorHits.length === 0 && a.len < 140); // нет “якорей” и текст короткий
-
-  // “passed” для ускорения админом (не авто-approve!)
-  const passed =
-    a.anchorHits.length >= 1 &&
-    a.keywordHits.length >= 2 &&
-    a.len >= 140 &&
-    a.digits >= 3;
-
-  return { hardReject, passed };
-}
-
-async function setProfileStatus(userId: string, status: "pending" | "rejected") {
-  await supabaseAdmin.from("profiles").update({ verification_status: status }).eq("id", userId);
+function keywordMatch(text: string) {
+  const t = (text || "").toLowerCase();
+  const hits = KEYWORDS.filter((k) => t.includes(k));
+  const passed = hits.length >= 2;
+  return { passed, hits };
 }
 
 async function finalizePending(requestId: string, userId: string, payload: any) {
@@ -270,33 +240,10 @@ async function finalizePending(requestId: string, userId: string, payload: any) 
       locked_by: null,
       next_retry_at: null,
       last_error: payload.last_error ?? null,
-      admin_comment: payload.admin_comment ?? null,
     })
     .eq("id", requestId);
 
-  await setProfileStatus(userId, "pending");
-}
-
-async function finalizeRejected(requestId: string, userId: string, payload: any) {
-  await supabaseAdmin
-    .from("verification_requests")
-    .update({
-      status: "rejected",
-      ai_passed: false,
-      matches: payload.matches ?? [],
-      ocr_text_preview: payload.preview ?? null,
-      signals: payload.signals ?? {},
-      admin_comment:
-        payload.admin_comment ||
-        "Документ не похож на студенческий билет. Попробуйте загрузить фото четче.",
-      locked_at: null,
-      locked_by: null,
-      next_retry_at: null,
-      last_error: payload.last_error ?? null,
-    })
-    .eq("id", requestId);
-
-  await setProfileStatus(userId, "rejected");
+  await supabaseAdmin.from("profiles").update({ verification_status: "pending" }).eq("id", userId);
 }
 
 async function retryLater(requestId: string, attemptCount: number, err: string) {
@@ -335,7 +282,9 @@ async function processJob(job: any) {
       .from(BUCKET)
       .createSignedUrl(filePath, 120);
 
-    if (signErr || !signed?.signedUrl) throw new Error(`signed_url_failed:${signErr?.message || "no_url"}`);
+    if (signErr || !signed?.signedUrl) {
+      throw new Error(`signed_url_failed:${signErr?.message || "no_url"}`);
+    }
 
     const signedUrl = signed.signedUrl;
 
@@ -352,8 +301,7 @@ async function processJob(job: any) {
       ocrapiErr = String(e1?.message || e1);
       console.log("[OCRAPI] failed:", ocrapiErr);
 
-      // fallback OCR.Space
-      provider = "ocr.space";
+      // fallback: OCR.Space
       const buf = await downloadFile(signedUrl);
       const r2 = await ocrOcrSpace(buf);
       text = r2.text;
@@ -361,54 +309,33 @@ async function processJob(job: any) {
     }
 
     const preview = (text || "").slice(0, 900) || null;
-    const a = analyzeText(text || "");
-    const { hardReject, passed } = decideAutoReject(a);
+    const { passed, hits } = keywordMatch(text || "");
 
     const signals = {
       worker_id: WORKER_ID,
       attempt: attemptCount,
       ocr_provider: provider,
       ocrapi_error: ocrapiErr,
-      keyword_hits: a.keywordHits,
-      anchor_hits: a.anchorHits,
-      text_len: a.len,
-      letters: a.letters,
-      digits: a.digits,
-      cyr: a.cyr,
-      lat: a.lat,
+      keyword_hits: hits,
+      text_len: (text || "").length,
       ts: new Date().toISOString(),
     };
 
-    console.log("[JOB] analyzed", { requestId, provider, ...a, hardReject, passed });
+    console.log("[JOB] done OCR", { requestId, provider, textLen: (text || "").length, passed });
 
-    // ✅ AUTO-REJECT только по hardReject (явный мусор)
-    if (hardReject) {
-      await finalizeRejected(requestId, userId, {
-        matches: a.keywordHits,
-        preview,
-        signals: { ...signals, reject_reason: "hard_reject" },
-        last_error: null,
-        admin_comment: "Документ не похож на студенческий билет. Загрузите фото четче (видны текст и номер).",
-      });
-      console.log("[JOB] rejected (hard)", { requestId });
-      return;
-    }
-
-    // иначе — pending админу. ai_passed помогает в админке (ускорить approve)
+    // ✅ NEVER auto-reject. Always pending for admin.
     await finalizePending(requestId, userId, {
       ai_passed: passed,
       preview,
-      matches: a.keywordHits,
+      matches: hits,
       signals: passed ? signals : { ...signals, weak_match: true },
-      last_error: null,
+      last_error: provider === "none" ? "no_provider" : null,
     });
-
-    console.log("[JOB] pending", { requestId, ai_passed: passed, provider });
   } catch (e: any) {
     const msg = String(e?.message || "processing_error");
     console.log("[JOB] error", { requestId, msg });
 
-    // OCR/скачивание/подпись упали — НЕ reject. Это не вина пользователя.
+    // ✅ degrade fast: pending for admin on OCR-related failures
     if (isOcrRelatedError(msg)) {
       await finalizePending(requestId, userId, {
         ai_passed: false,
@@ -417,13 +344,12 @@ async function processJob(job: any) {
         signals: {
           worker_id: WORKER_ID,
           attempt: attemptCount,
-          ocr_provider: msg.startsWith("ocrspace_") ? "ocr.space" : "none",
+          ocr_provider: "none",
           last_error: msg,
           degraded: true,
           ts: new Date().toISOString(),
         },
         last_error: msg,
-        admin_comment: "OCR временно недоступен — заявка отправлена на ручную проверку.",
       });
       return;
     }
@@ -442,7 +368,6 @@ async function processJob(job: any) {
           ts: new Date().toISOString(),
         },
         last_error: msg,
-        admin_comment: "Не удалось обработать документ автоматически — отправлено на ручную проверку.",
       });
       return;
     }
