@@ -180,7 +180,7 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
               <option value="Алматы" className="dark:bg-gray-900">Алматы</option>
               <option value="Астана" className="dark:bg-gray-900">Астана</option>
               <option value="Шымкент" className="dark:bg-gray-900">Шымкент</option>
-              <option value="Караганда" className="dark:bg-gray-900">Караганда хуйня</option>
+              <option value="Караганда" className="dark:bg-gray-900">Караганда</option>
             </select>
           </div>
         </div>
