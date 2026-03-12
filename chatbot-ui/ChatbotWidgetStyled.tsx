@@ -7,12 +7,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import { User, Bot } from "lucide-react";
 import ReactMarkdown from "react-markdown"; 
 import type { ChatMode } from "../chatbot-ai/router";
+import { TypingText } from "./TypingText";
 
 const MotionDiv = motion.div as any;
 const MotionButton = motion.button as any;
 
 // --- КОМПОНЕНТ РЕНДЕРИНГА MARKDOWN (ССЫЛКИ) ---
-const MarkdownRenderer = ({ content, isUser }: { content: string; isUser: boolean }) => {
+const MarkdownRenderer = ({
+  content,
+  isUser,
+}: {
+  content: string;
+  isUser: boolean;
+}) => {
   return (
     <ReactMarkdown
       components={{
@@ -21,45 +28,30 @@ const MarkdownRenderer = ({ content, isUser }: { content: string; isUser: boolea
             {...props}
             target="_blank"
             rel="noopener noreferrer"
-            className={`underline font-bold transition-opacity hover:opacity-80 ${
+            className={`underline underline-offset-2 font-semibold transition-opacity hover:opacity-80 ${
               isUser ? "text-slate-900" : "text-white"
             }`}
           />
         ),
-        p: ({ children }) => <span className="inline">{children}</span>,
+        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+        ul: ({ children }) => <ul className="list-disc pl-5 space-y-1">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal pl-5 space-y-1">{children}</ol>,
+        li: ({ children }) => <li>{children}</li>,
+        code: ({ children }) => (
+          <code
+            className={`px-1.5 py-0.5 rounded-md text-[13px] ${
+              isUser
+                ? "bg-black/10 text-slate-900"
+                : "bg-white/10 text-white"
+            }`}
+          >
+            {children}
+          </code>
+        ),
       }}
     >
       {content}
     </ReactMarkdown>
-  );
-};
-
-// --- КОМПОНЕНТ ЭФФЕКТА ПЕЧАТИ ---
-const TypingText = ({ text, speed = 0.015, onComplete }: { text: string; speed?: number; onComplete?: () => void }) => {
-  const characters = text.split("");
-  
-  return (
-    <motion.div className="inline">
-      {characters.map((char, index) => (
-        <motion.span
-          key={index}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.1, delay: index * speed }}
-          onAnimationComplete={() => {
-            if (index === characters.length - 1 && onComplete) onComplete();
-          }}
-        >
-          {char}
-        </motion.span>
-      ))}
-      <motion.span
-        initial={{ opacity: 0 }}
-        animate={{ opacity: [0, 1, 0] }}
-        transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
-        className="inline-block w-1.5 h-4 ml-1 bg-current align-middle"
-      />
-    </motion.div>
   );
 };
 
@@ -115,15 +107,14 @@ export default function ChatbotWidgetStyled({ height, mode = "smart" }: ChatbotW
 
   return (
 <div
-      className="flex flex-col w-full h-full rounded-3xl shadow-2xl overflow-hidden relative border border-white/20 dark:border-slate-800 dark:bg-slate-900"
-      style={{ 
-        height: height || "100%", 
-        position: "relative",
-        // Применяем эффекты только если НЕ темная тема
-        background: "var(--tw-background-opacity) === '1' ? '' : 'linear-gradient(135deg, rgba(248, 250, 252, 0.8) 0%, rgba(241, 245, 249, 0.7) 100%)'",
-        backdropFilter: "blur(20px)",
-      }}
-    >
+  className="flex flex-col w-full h-full rounded-3xl shadow-2xl overflow-hidden relative border border-white/20 dark:border-slate-800 bg-gradient-to-br from-slate-50/80 to-slate-100/70 dark:bg-slate-900"
+  style={{
+    height: height || "100%",
+    position: "relative",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+  }}
+>
       {/* Зеленый круг скрывается в темной теме через dark:hidden */}
       <div className="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] bg-green-500/10 rounded-full blur-[80px] pointer-events-none dark:hidden" />
 
@@ -167,31 +158,49 @@ export default function ChatbotWidgetStyled({ height, mode = "smart" }: ChatbotW
                 )}
 
                 <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
-                  <div className={`px-4 py-2 rounded-2xl shadow-sm border text-[14px] leading-relaxed ${
-                    isUser 
-                      ? "bg-white/20 text-black border-green-300 dark:border-green-700 rounded-tr-none" 
-                      : "bg-indigo-600 dark:bg-slate-800 text-white border-slate-200 dark:border-slate-700 rounded-tl-none"
-                  }`}>
-                    {/* РЕШЕНИЕ ПРОБЛЕМЫ ТУТ */}
-                    {!isUser && isLastMessage && !isPartial && !isDoneTyping ? (
-                      <TypingText 
-                        text={m.text} 
-                        onComplete={() => setCompletedTyping(prev => ({ ...prev, [m.id]: true }))} 
-                      />
-                    ) : (
-                      <MarkdownRenderer content={m.text} isUser={isUser} />
-                    )}
-                    
-                    {isPartial && (
-                      <span className="ml-2 text-[10px] italic opacity-60 block mt-1 pb-2">
-                        {mode === "pro" ? "Продумывает детали..." : "Думает..."}
-                      </span>
-                    )}
-                  </div>
-                  {m.timestamp && (
-                    <span className="text-[10px] text-slate-400 mt-1 px-1">{m.timestamp}</span>
-                  )}
-                </div>
+  <div
+    className={[
+      "max-w-[85%] px-4 py-3 rounded-2xl border shadow-sm text-[14px] leading-6 transition-all",
+      isUser
+        ? "bg-white/25 text-black dark:text-white border-green-300 dark:border-green-700 rounded-tr-none"
+        : "bg-gradient-to-br from-indigo-600 to-indigo-500 dark:from-slate-800 dark:to-slate-800 text-white border-slate-200/30 dark:border-slate-700 rounded-tl-none",
+    ].join(" ")}
+  >
+    {!isUser && isLastMessage && !isPartial && !isDoneTyping ? (
+      <TypingText
+        text={m.text}
+        speed={8}
+        showCursor
+        className="whitespace-pre-wrap break-words"
+        cursorClassName="bg-white/90 dark:bg-indigo-300"
+        onComplete={() =>
+          setCompletedTyping((prev) => ({ ...prev, [m.id]: true }))
+        }
+      />
+    ) : (
+      <div className="whitespace-pre-wrap break-words">
+        <MarkdownRenderer content={m.text} isUser={isUser} />
+      </div>
+    )}
+
+    {isPartial && !isUser && (
+      <div className="mt-2 flex items-center gap-2 text-[11px] text-white/80 dark:text-slate-300">
+        <span className="inline-flex gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce [animation-delay:0ms]" />
+          <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce [animation-delay:120ms]" />
+          <span className="h-1.5 w-1.5 rounded-full bg-current animate-bounce [animation-delay:240ms]" />
+        </span>
+        <span>{mode === "pro" ? "Продумывает детали..." : "Думает..."}</span>
+      </div>
+    )}
+  </div>
+
+  {m.timestamp && (
+    <span className="mt-1 px-1 text-[10px] text-slate-400">
+      {m.timestamp}
+    </span>
+  )}
+</div>
 
                 {isUser && (
                   <motion.div

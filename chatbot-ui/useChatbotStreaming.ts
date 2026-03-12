@@ -1,32 +1,40 @@
-// /chatbot-ui/useChatbotStreaming.ts
 "use client";
 
-import { useMemo, useCallback } from "react";
+import { useMemo } from "react";
 import { useChatbot } from "./ChatbotProvider";
 
 export default function useChatbotStreaming() {
-  // Используем хук, который мы уже экспортировали из провайдера
   const { messages, isStreaming, sendMessage } = useChatbot();
 
-  // Находим последнее AI-сообщение, которое еще стримится
-  const partial = useMemo(() => {
-    if (!messages || messages.length === 0) return "";
-    
-    // Идем с конца массива сообщений
+  const streamingMessage = useMemo(() => {
+    if (!messages?.length) return null;
+
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
-      if (m.role === "ai" && m.partial) return m.text;
+      if (m.role === "ai" && m.partial) {
+        return m;
+      }
     }
-    return "";
+
+    return null;
   }, [messages]);
 
-  const clear = useCallback(() => {
-    // Метод оставлен для совместимости
-  }, []);
+  const lastAiMessage = useMemo(() => {
+    if (!messages?.length) return null;
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "ai") return m;
+    }
+
+    return null;
+  }, [messages]);
 
   return {
-    partial,
-    isStreaming: isStreaming ?? false,
+    partial: streamingMessage?.text ?? "",
+    partialMessage: streamingMessage,
+    lastAiMessage,
+    isStreaming: Boolean(isStreaming),
     sendMessage,
   };
 }
