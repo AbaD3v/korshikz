@@ -205,10 +205,10 @@ export default function StudentVerifyUploader() {
       // если уже в процессе — не спамим
       if (status === "pending" || status === "processing") return;
 
-      const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
+      const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
       if (!allowedTypes.includes(file.type)) {
         setStatus("error");
-        setMessage("Поддерживаются только JPG, PNG и PDF");
+        setMessage("Пока поддерживаются только JPG, PNG и WEBP. PDF временно недоступен.");
         return;
       }
 
@@ -249,9 +249,9 @@ export default function StudentVerifyUploader() {
       const result = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setTerminalError(result?.error || `Ошибка сервера (${res.status}).`);
-        return;
-      }
+  setTerminalError(result?.error || `Ошибка сервера (${res.status}).`);
+  return;
+}
 
       const rid = String(result?.requestId || "");
       if (!rid) {
@@ -334,7 +334,7 @@ export default function StudentVerifyUploader() {
           {status === "error" ? "Проверка не прошла" : "Верификация студента"}
         </p>
         <p className="text-sm text-neutral-500 mt-1 max-w-[300px]">
-          {message || "Загрузите фото студенческого билета (каз/рус) или PDF"}
+          {message || "Загрузите фото студенческого билета в JPG, PNG или WEBP. PDF пока не поддерживается"}
         </p>
       </div>
 
@@ -347,17 +347,17 @@ export default function StudentVerifyUploader() {
       >
         {status === "error" ? "Попробовать еще раз" : "Выбрать документ"}
         <input
-          type="file"
-          accept="image/*,application/pdf"
-          onChange={handleVerify}
-          className="hidden"
-          disabled={status === "uploading"}
-        />
+  type="file"
+  accept="image/jpeg,image/png,image/webp"
+  onChange={handleVerify}
+  className="hidden"
+  disabled={status === "uploading"}
+/>
       </label>
 
       <div className="mt-2 flex items-center gap-1.5 text-[11px] text-neutral-400 uppercase tracking-wider font-bold">
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-        Только вузы Астаны (временно)
+        Только фото: JPG, PNG, WEBP • PDF пока недоступен
       </div>
     </div>
   );
