@@ -142,11 +142,6 @@ export default function GroupChatPage() {
                     : "bg-[#1e293b] text-white rounded-[1.25rem] rounded-tl-none border border-white/10"
                 }`}
               >
-                {!isMe && (
-                  <div className="text-[11px] font-semibold text-indigo-300 mb-1">
-                    Участник
-                  </div>
-                )}
 
                 <p className="text-[15px] leading-relaxed break-words select-text">
                   {msg.content}
