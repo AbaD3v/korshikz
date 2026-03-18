@@ -31,7 +31,7 @@ type Item = {
   id: string;
   user_id: string;
   file_path: string;
-  matches: number;
+  matches?: string[] | null;
   ai_passed: boolean;
   status: string;
   created_at: string;
@@ -52,7 +52,24 @@ function safeSignals(s: any) {
     return null;
   }
 }
+function safeMatches(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((x): x is string => typeof x === "string");
+  }
 
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed)
+        ? parsed.filter((x): x is string => typeof x === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
 async function authedFetch(url: string, init?: RequestInit) {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -127,19 +144,19 @@ export default function AdminVerificationsPage() {
     return items.filter((it) => {
       const p = it.profiles;
       const hay = [
-        it.id,
-        it.user_id,
-        it.file_path,
-        String(it.matches ?? ""),
-        String(it.ai_passed ?? ""),
-        it.ocr_text_preview ?? "",
-        p?.full_name ?? "",
-        p?.username ?? "",
-        p?.university ?? "",
-        p?.city ?? "",
-      ]
-        .join(" ")
-        .toLowerCase();
+  it.id,
+  it.user_id,
+  it.file_path,
+  safeMatches(it.matches).join(" "),
+  String(it.ai_passed ?? ""),
+  it.ocr_text_preview ?? "",
+  p?.full_name ?? "",
+  p?.username ?? "",
+  p?.university ?? "",
+  p?.city ?? "",
+]
+  .join(" ")
+  .toLowerCase();
 
       return hay.includes(q);
     });
@@ -276,6 +293,7 @@ export default function AdminVerificationsPage() {
           {filtered.map((it) => {
             const sig = safeSignals(it.signals);
             const isExpanded = !!expanded[it.id];
+            const matches = safeMatches(it.matches);
 
             const p = it.profiles;
             const displayName = p?.full_name || p?.username || it.user_id;
@@ -318,8 +336,20 @@ export default function AdminVerificationsPage() {
 
                     <div className="mt-2 flex items-center gap-2 flex-wrap">
                       <span className={badgeClass("bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300")}>
-                        matches {it.matches}
-                      </span>
+  matches {matches.length}
+</span>
+{matches.length > 0 && (
+  <div className="mt-2 flex flex-wrap gap-2">
+    {matches.slice(0, 8).map((match) => (
+      <span
+        key={match}
+        className="text-[11px] px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300"
+      >
+        {match}
+      </span>
+    ))}
+  </div>
+)}
 
                       {sig?.hasIdLike && (
                         <span className={badgeClass("bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300")}>
