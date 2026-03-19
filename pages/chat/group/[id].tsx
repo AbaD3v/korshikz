@@ -8,7 +8,7 @@ import { ArrowLeft, Send, Users, MoreHorizontal, User } from "lucide-react";
 
 interface Profile {
   id: string;
-  username: string | null;
+  full_name: string | null;
   avatar_url: string | null;
 }
 
@@ -100,7 +100,7 @@ export default function GroupChatPage() {
 
     supabase
       .from("profiles")
-      .select("id, username, avatar_url")
+      .select("id, full_name, avatar_url")
       .in("id", senderIds)
       .then(({ data, error }) => {
         if (error) {
@@ -161,7 +161,7 @@ export default function GroupChatPage() {
   };
 
   const getDisplayName = (sender: Profile | null) => {
-    return sender?.username?.split("@")[0] || "Пользователь";
+    return sender?.full_name?.split("@")[0] || "Пользователь";
   };
 
   return (
