@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/router";
 import { supabase } from "../lib/supabaseClient";
 import ProfileButton from "./ProfileButton";
-import NotificationsBell from "./NotificationsBell"; // ✅ ДОБАВИЛ (путь проверь)
+import NotificationsBell from "./NotificationsBell";
 import { useUnreadChatCount } from "../hooks/useUnreadChatCount";
 
 import {
@@ -29,6 +29,8 @@ type HeaderProps = {
   setCity?: (c: string) => void;
 };
 
+const CITY_OPTIONS = ["Алматы", "Астана", "Шымкент", "Караганда"];
+
 function useAuthProfile(
   setUser: (u: any) => void,
   setProfile: (p: any) => void,
@@ -41,48 +43,72 @@ function useAuthProfile(
       "/auth/update-password",
       "/auth/confirm",
       "/auth/forgot-password",
+      "/auth/login",
+      "/auth/register",
     ];
 
     const isExcluded = authExclusionPages.some((page) =>
       router.pathname.startsWith(page)
     );
 
+    const loadProfile = async (authUser: any) => {
+      if (!authUser) {
+        if (mounted) {
+          setUser(null);
+          setProfile(null);
+        }
+        return;
+      }
+
+      if (mounted) setUser(authUser);
+
+      const { data: existingProfile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, username, avatar_url, isOnboarded")
+        .eq("id", authUser.id)
+        .maybeSingle();
+
+      if (profileError) {
+        console.warn("Profile fetch error:", profileError);
+        return;
+      }
+
+      let finalProfile = existingProfile;
+
+      if (!existingProfile) {
+        const { data: createdProfile, error: createError } = await supabase
+          .from("profiles")
+          .upsert([{ id: authUser.id, isOnboarded: false }], {
+            onConflict: "id",
+          })
+          .select("id, username, avatar_url, isOnboarded")
+          .maybeSingle();
+
+        if (createError) {
+          console.warn("Profile create error:", createError);
+          return;
+        }
+
+        finalProfile = createdProfile;
+      }
+
+      if (mounted) {
+        setProfile(finalProfile ?? null);
+      }
+
+      if (
+        finalProfile?.isOnboarded === false &&
+        !isExcluded &&
+        router.pathname !== "/onboarding"
+      ) {
+        router.replace("/onboarding");
+      }
+    };
+
     const fetchUser = async () => {
       try {
         const { data } = await supabase.auth.getUser();
-        const authUser = data?.user || null;
-
-        if (!mounted) return;
-        setUser(authUser);
-
-        if (authUser) {
-          const { data: p } = await supabase
-            .from("profiles")
-            .select("id, username, avatar_url, isOnboarded")
-            .eq("id", authUser.id)
-            .maybeSingle();
-
-          // Если профиля еще нет
-          if (!p) {
-            const { data: created } = await supabase
-              .from("profiles")
-              .insert([{ id: authUser.id, isOnboarded: false }])
-              .select()
-              .maybeSingle();
-
-            if (mounted) setProfile(created);
-
-            if (!isExcluded && router.pathname !== "/onboarding") {
-              router.push("/onboarding");
-            }
-          } else {
-            if (mounted) setProfile(p);
-
-            if (p.isOnboarded === false && !isExcluded && router.pathname !== "/onboarding") {
-              router.push("/onboarding");
-            }
-          }
-        }
+        await loadProfile(data?.user || null);
       } catch (err) {
         console.warn("Auth fetch error:", err);
       }
@@ -90,19 +116,17 @@ function useAuthProfile(
 
     fetchUser();
 
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      const authUser = session?.user || null;
-      if (mounted) {
-        setUser(authUser);
-        if (!authUser) setProfile(null);
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        await loadProfile(session?.user || null);
       }
-    });
+    );
 
     return () => {
       mounted = false;
       listener.subscription.unsubscribe();
     };
-  }, [router.pathname]); // оставил как у тебя, чтобы не менять поведение
+  }, [router.pathname, router, setProfile, setUser]);
 }
 
 export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
@@ -111,41 +135,53 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
   const [profile, setProfile] = useState<any>(null);
   const router = useRouter();
   const { unreadChatCount } = useUnreadChatCount();
+
   useAuthProfile(setUser, setProfile, router);
 
-  // --- СИНХРОНИЗАЦИЯ ГОРОДА С URL ---
   useEffect(() => {
-    if (router.isReady) {
-      const cityFromUrl = router.query.city as string;
-      if (cityFromUrl && cityFromUrl.toLowerCase() !== city.toLowerCase()) {
-        setCity?.(cityFromUrl);
+    if (!router.isReady) return;
+
+    const cityFromUrl = router.query.city as string;
+    if (cityFromUrl && cityFromUrl.toLowerCase() !== city.toLowerCase()) {
+      setCity?.(cityFromUrl);
+    }
+  }, [router.isReady, router.query.city, city, setCity]);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [router.asPath]);
+
+  const handleCityChange = useCallback(
+    (newCity: string) => {
+      setCity?.(newCity);
+
+      if (router.pathname.startsWith("/listings")) {
+        router.push(
+          {
+            pathname: router.pathname,
+            query: { ...router.query, city: newCity },
+          },
+          undefined,
+          { shallow: false }
+        );
       }
-    }
-  }, [router.isReady, router.query.city]); // оставил как у тебя
-
-  const handleCityChange = useCallback((newCity: string) => {
-    setCity?.(newCity);
-
-    if (router.pathname.startsWith("/listings")) {
-      router.push(
-        {
-          pathname: router.pathname,
-          query: { ...router.query, city: newCity },
-        },
-        undefined,
-        { shallow: false }
-      );
-    }
-  }, [router.pathname, router.query, setCity]);
+    },
+    [router, setCity]
+  );
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setOpen(false);
-    router.push("/");
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      setUser(null);
+      setProfile(null);
+      setOpen(false);
+      router.push("/");
+    }
   };
 
   const toggleTheme = () => setTheme?.(theme === "light" ? "dark" : "light");
+
   const isActive = (href: string) =>
     router.pathname === href || router.pathname.startsWith(href + "/");
 
@@ -154,8 +190,6 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
   return (
     <header className="sticky top-0 z-50 w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200/50 dark:border-gray-800/50 transition-all">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-
-        {/* Левая часть: Лого + Город (Десктоп) */}
         <div className="flex items-center gap-4 sm:gap-8 shrink-0">
           <Link href="/" className="group">
             <div className="relative w-24 sm:w-32 h-8 sm:h-10 rounded-xl overflow-hidden shadow-lg group-hover:scale-105 transition-transform">
@@ -169,7 +203,6 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
             </div>
           </Link>
 
-          {/* ВЫБОР ГОРОДА ДЛЯ ДЕСКТОПА */}
           <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-gray-100/50 dark:bg-gray-800/50 rounded-xl border border-gray-200/20">
             <MapPin size={14} className="text-indigo-500" />
             <select
@@ -177,15 +210,15 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
               onChange={(e) => handleCityChange(e.target.value)}
               className="bg-transparent text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer dark:text-gray-200"
             >
-              <option value="Алматы" className="dark:bg-gray-900">Алматы</option>
-              <option value="Астана" className="dark:bg-gray-900">Астана</option>
-              <option value="Шымкент" className="dark:bg-gray-900">Шымкент</option>
-              <option value="Караганда" className="dark:bg-gray-900">Караганда хуйня</option>
+              {CITY_OPTIONS.map((item) => (
+                <option key={item} value={item} className="dark:bg-gray-900">
+                  {item}
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
-        {/* Центр: Навигация (Десктоп) */}
         <nav className="hidden md:flex items-center bg-gray-100/50 dark:bg-gray-800/50 p-1 rounded-xl border border-gray-200/20">
           <Link
             href="/listings"
@@ -195,7 +228,7 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
                 : "text-gray-500 hover:text-gray-900 dark:hover:text-white"
             }`}
           >
-            <List size={16} /> Объявления
+            <List size={16} /> Люди
           </Link>
 
           <Link
@@ -210,14 +243,13 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
           </Link>
         </nav>
 
-        {/* Правая часть: Действия */}
         <div className="flex items-center gap-1 sm:gap-2">
           {user && (
             <Link
               href="/create"
               className="hidden md:flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black transition-all shadow-lg shadow-indigo-500/20 active:scale-95 uppercase tracking-widest mr-2"
             >
-              <PlusCircle size={16} /> Создать
+              <PlusCircle size={16} /> Моё жильё
             </Link>
           )}
 
@@ -235,24 +267,20 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
 
           {user ? (
             <div className="flex items-center gap-1 sm:gap-2">
-
-              {/* ✅ НОВОЕ: колокольчик уведомлений (realtime) */}
               <NotificationsBell />
 
-              {/* чат */}
               <Link
-  href="/chat"
-  className="relative p-2 text-gray-500 hover:text-indigo-600 transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
-  aria-label="Chat"
->
-  <MessageCircle size={22} />
-
-  {unreadChatCount > 0 && (
-    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center border-2 border-white dark:border-gray-900">
-      {unreadChatCount > 99 ? "99+" : unreadChatCount}
-    </span>
-  )}
-</Link>
+                href="/chat"
+                className="relative p-2 text-gray-500 hover:text-indigo-600 transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+                aria-label="Chat"
+              >
+                <MessageCircle size={22} />
+                {unreadChatCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center border-2 border-white dark:border-gray-900">
+                    {unreadChatCount > 99 ? "99+" : unreadChatCount}
+                  </span>
+                )}
+              </Link>
 
               <ProfileButton user={profile ?? { id: user?.id }} />
 
@@ -292,7 +320,6 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
         </div>
       </div>
 
-      {/* Мобильное меню */}
       {open && (
         <div className="md:hidden absolute top-full left-0 right-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 p-4 space-y-4 shadow-2xl animate-in slide-in-from-top-2">
           <div className="grid grid-cols-2 gap-2">
@@ -301,19 +328,28 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
               onClick={() => setOpen(false)}
               className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 font-bold text-sm"
             >
-              <List className="text-indigo-500" /> Объявления
+              <List className="text-indigo-500" /> Люди
             </Link>
 
-            <Link
-              href="/create"
-              onClick={() => setOpen(false)}
-              className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 font-bold text-sm"
-            >
-              <PlusCircle /> Создать
-            </Link>
+            {user ? (
+              <Link
+                href="/create"
+                onClick={() => setOpen(false)}
+                className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 font-bold text-sm"
+              >
+                <PlusCircle /> Жильё
+              </Link>
+            ) : (
+              <Link
+                href="/auth/login"
+                onClick={() => setOpen(false)}
+                className="flex flex-col items-center gap-2 p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 font-bold text-sm"
+              >
+                <PlusCircle /> Войти
+              </Link>
+            )}
           </div>
 
-          {/* Город в мобильном меню */}
           <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-800">
             <div className="text-[10px] font-black text-gray-400 mb-2 uppercase tracking-widest">
               Ваш город
@@ -325,9 +361,11 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
                 onChange={(e) => handleCityChange(e.target.value)}
                 className="bg-transparent flex-1 outline-none dark:text-white"
               >
-                <option value="Алматы" className="dark:bg-gray-900">Алматы</option>
-                <option value="Астана" className="dark:bg-gray-900">Астана</option>
-                <option value="Шымкент" className="dark:bg-gray-900">Шымкент</option>
+                {CITY_OPTIONS.map((item) => (
+                  <option key={item} value={item} className="dark:bg-gray-900">
+                    {item}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

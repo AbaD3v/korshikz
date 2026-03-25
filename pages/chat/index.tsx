@@ -1,9 +1,7 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 import { supabase } from "@/hooks/utils/supabase/client";
 import {
   ChevronRight,
@@ -11,12 +9,16 @@ import {
   Search,
   User,
   Users,
+  ShieldCheck,
+  GraduationCap,
 } from "lucide-react";
 
 interface Profile {
   id: string;
   full_name: string | null;
   avatar_url: string | null;
+  university?: string | null;
+  is_verified?: boolean | null;
 }
 
 interface DirectDialogItem {
@@ -28,6 +30,8 @@ interface DirectDialogItem {
   lastMessage: string | null;
   lastTime: string | null;
   unread: number;
+  university?: string | null;
+  is_verified?: boolean;
 }
 
 interface GroupDialogItem {
@@ -52,243 +56,310 @@ export default function ChatList() {
   const router = useRouter();
 
   useEffect(() => {
+    let active = true;
+
     supabase.auth.getUser().then(({ data }) => {
+      if (!active) return;
+
       const u = data.user ?? null;
       setUser(u);
-      if (!u) router.push("/auth/login");
+
+      if (!u) {
+        router.push("/login");
+      }
     });
+
+    return () => {
+      active = false;
+    };
   }, [router]);
 
-  useEffect(() => {
-    if (!user) return;
+  const loadDirectDialogs = useCallback(
+    async (currentUserId: string): Promise<DirectDialogItem[]> => {
+      const { data: messages, error: messagesError } = await supabase
+        .from("messages")
+        .select("sender_id, receiver_id, body, created_at, is_read")
+        .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
+        .order("created_at", { ascending: false });
 
-    const loadDialogs = async () => {
-      setLoading(true);
-
-      try {
-        const [directDialogs, groupDialogs] = await Promise.all([
-          loadDirectDialogs(user.id),
-          loadGroupDialogs(user.id),
-        ]);
-
-        const merged = [...directDialogs, ...groupDialogs].sort((a, b) => {
-          const aTime = a.lastTime ? new Date(a.lastTime).getTime() : 0;
-          const bTime = b.lastTime ? new Date(b.lastTime).getTime() : 0;
-          return bTime - aTime;
-        });
-
-        setDialogs(merged);
-      } catch (error) {
-        console.error("Error loading chat list:", error);
-      } finally {
-        setLoading(false);
+      if (messagesError) {
+        console.error("Direct messages load error:", messagesError);
+        return [];
       }
-    };
 
-    loadDialogs();
-  }, [user]);
+      if (!messages || messages.length === 0) return [];
 
-  async function loadDirectDialogs(currentUserId: string): Promise<DirectDialogItem[]> {
-    const { data: messages, error: messagesError } = await supabase
-      .from("messages")
-      .select("*")
-      .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
-      .order("created_at", { ascending: false });
+      const dialogMap = new Map<
+        string,
+        {
+          otherUserId: string;
+          lastMessage: string | null;
+          lastTime: string | null;
+          fromMe: boolean;
+        }
+      >();
 
-    if (messagesError) {
-      console.error("Direct messages load error:", messagesError);
-      return [];
-    }
+      for (const msg of messages) {
+        const otherId =
+          msg.sender_id === currentUserId ? msg.receiver_id : msg.sender_id;
 
-    if (!messages || messages.length === 0) return [];
+        if (!otherId) continue;
 
-    const dialogMap = new Map<
-      string,
-      {
-        otherUserId: string;
-        lastMessage: string | null;
-        lastTime: string | null;
+        if (!dialogMap.has(otherId)) {
+          dialogMap.set(otherId, {
+            otherUserId: otherId,
+            lastMessage: msg.body ?? null,
+            lastTime: msg.created_at ?? null,
+            fromMe: msg.sender_id === currentUserId,
+          });
+        }
       }
-    >();
 
-    for (const msg of messages) {
-      const otherId =
-        msg.sender_id === currentUserId ? msg.receiver_id : msg.sender_id;
+      const ids = Array.from(dialogMap.keys());
 
-      if (!otherId) continue;
-
-      if (!dialogMap.has(otherId)) {
-        dialogMap.set(otherId, {
-          otherUserId: otherId,
-          lastMessage: msg.body ?? null,
-          lastTime: msg.created_at ?? null,
-        });
-      }
-    }
-
-    const ids = Array.from(dialogMap.keys());
-
-    const { data: profiles, error: profilesError } = await supabase
-      .from("profiles")
-      .select("id, full_name, avatar_url")
-      .in("id", ids);
-
-    if (profilesError) {
-      console.error("Profiles load error:", profilesError);
-    }
-
-    const { data: unreadMessages, error: unreadError } = await supabase
-      .from("messages")
-      .select("sender_id, receiver_id, read")
-      .eq("receiver_id", currentUserId)
-      .eq("read", false);
-
-    if (unreadError) {
-      console.error("Unread direct messages load error:", unreadError);
-    }
-
-    return ids.map((uid) => {
-      const prof = profiles?.find((p) => p.id === uid);
-      const unreadCount =
-        unreadMessages?.filter((m) => m.sender_id === uid).length ?? 0;
-
-      return {
-        id: `direct-${uid}`,
-        kind: "direct" as const,
-        href: `/chat/${uid}`,
-        title: prof?.full_name ?? "Пользователь",
-        avatar_url: prof?.avatar_url ?? null,
-        lastMessage: dialogMap.get(uid)?.lastMessage ?? null,
-        lastTime: dialogMap.get(uid)?.lastTime ?? null,
-        unread: unreadCount,
-      };
-    });
-  }
-
-  async function loadGroupDialogs(currentUserId: string): Promise<GroupDialogItem[]> {
-    const { data: memberships, error: membershipsError } = await supabase
-      .from("group_chat_members")
-      .select("group_chat_id")
-      .eq("user_id", currentUserId);
-
-    if (membershipsError) {
-      console.error("Group memberships load error:", membershipsError);
-      return [];
-    }
-
-    const groupIds =
-      memberships?.map((m: { group_chat_id: string }) => m.group_chat_id) ?? [];
-
-    if (groupIds.length === 0) return [];
-
-    const { data: groups, error: groupsError } = await supabase
-      .from("group_chats")
-      .select("id, title, avatar_url")
-      .in("id", groupIds);
-
-    if (groupsError) {
-      console.error("Groups load error:", groupsError);
-      return [];
-    }
-
-    const { data: groupMessages, error: groupMessagesError } = await supabase
-      .from("group_chat_messages")
-      .select("id, group_chat_id, sender_id, content, created_at")
-      .in("group_chat_id", groupIds)
-      .order("created_at", { ascending: false });
-
-    if (groupMessagesError) {
-      console.error("Group messages load error:", groupMessagesError);
-      return [];
-    }
-
-    const latestByGroup = new Map<
-      string,
-      {
-        id: string;
-        group_chat_id: string;
-        sender_id: string;
-        content: string | null;
-        created_at: string | null;
-      }
-    >();
-
-    for (const msg of groupMessages ?? []) {
-      if (!latestByGroup.has(msg.group_chat_id)) {
-        latestByGroup.set(msg.group_chat_id, msg);
-      }
-    }
-
-    const senderIds = Array.from(
-      new Set((groupMessages ?? []).map((m) => m.sender_id).filter(Boolean))
-    );
-
-    let senderProfiles: Profile[] = [];
-    if (senderIds.length > 0) {
-      const { data: profiles, error: senderProfilesError } = await supabase
+      const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, full_name, avatar_url")
-        .in("id", senderIds);
+        .select("id, full_name, avatar_url, university, is_verified")
+        .in("id", ids);
 
-      if (senderProfilesError) {
-        console.error("Group sender profiles load error:", senderProfilesError);
-      } else {
-        senderProfiles = profiles ?? [];
+      if (profilesError) {
+        console.error("Profiles load error:", profilesError);
       }
-    }
 
-    const { data: unreadRows, error: unreadError } = await supabase
-      .from("group_chat_reads")
-      .select("group_chat_id, last_read_at")
-      .eq("user_id", currentUserId);
+      const { data: unreadMessages, error: unreadError } = await supabase
+        .from("messages")
+        .select("sender_id, receiver_id, is_read")
+        .eq("receiver_id", currentUserId)
+        .eq("is_read", false);
 
-    if (unreadError) {
-      console.error("Group reads load error:", unreadError);
-    }
-
-    const readMap = new Map<string, string | null>();
-    for (const row of unreadRows ?? []) {
-      readMap.set(row.group_chat_id, row.last_read_at ?? null);
-    }
-
-    const unreadCountMap = new Map<string, number>();
-    for (const groupId of groupIds) {
-      unreadCountMap.set(groupId, 0);
-    }
-
-    for (const msg of groupMessages ?? []) {
-      if (msg.sender_id === currentUserId) continue;
-
-      const lastReadAt = readMap.get(msg.group_chat_id);
-      const isUnread =
-        !lastReadAt ||
-        new Date(msg.created_at).getTime() > new Date(lastReadAt).getTime();
-
-      if (isUnread) {
-        unreadCountMap.set(
-          msg.group_chat_id,
-          (unreadCountMap.get(msg.group_chat_id) ?? 0) + 1
-        );
+      if (unreadError) {
+        console.error("Unread direct messages load error:", unreadError);
       }
+
+      return ids.map((uid) => {
+        const prof = profiles?.find((p) => p.id === uid);
+        const dialog = dialogMap.get(uid);
+        const unreadCount =
+          unreadMessages?.filter((m) => m.sender_id === uid).length ?? 0;
+
+        const rawLastMessage = dialog?.lastMessage ?? null;
+        const prefixedLastMessage =
+          rawLastMessage && dialog?.fromMe ? `Вы: ${rawLastMessage}` : rawLastMessage;
+
+        return {
+          id: `direct-${uid}`,
+          kind: "direct" as const,
+          href: `/chat/${uid}`,
+          title: prof?.full_name ?? "Пользователь",
+          avatar_url: prof?.avatar_url ?? null,
+          lastMessage: prefixedLastMessage,
+          lastTime: dialog?.lastTime ?? null,
+          unread: unreadCount,
+          university: prof?.university ?? null,
+          is_verified: Boolean(prof?.is_verified),
+        };
+      });
+    },
+    []
+  );
+
+  const loadGroupDialogs = useCallback(
+    async (currentUserId: string): Promise<GroupDialogItem[]> => {
+      const { data: memberships, error: membershipsError } = await supabase
+        .from("group_chat_members")
+        .select("group_chat_id")
+        .eq("user_id", currentUserId);
+
+      if (membershipsError) {
+        console.error("Group memberships load error:", membershipsError);
+        return [];
+      }
+
+      const groupIds =
+        memberships?.map((m: { group_chat_id: string }) => m.group_chat_id) ?? [];
+
+      if (groupIds.length === 0) return [];
+
+      const { data: groups, error: groupsError } = await supabase
+        .from("group_chats")
+        .select("id, title, avatar_url")
+        .in("id", groupIds);
+
+      if (groupsError) {
+        console.error("Groups load error:", groupsError);
+        return [];
+      }
+
+      const { data: groupMessages, error: groupMessagesError } = await supabase
+        .from("group_chat_messages")
+        .select("id, group_chat_id, sender_id, content, created_at")
+        .in("group_chat_id", groupIds)
+        .order("created_at", { ascending: false });
+
+      if (groupMessagesError) {
+        console.error("Group messages load error:", groupMessagesError);
+        return [];
+      }
+
+      const latestByGroup = new Map<
+        string,
+        {
+          id: string;
+          group_chat_id: string;
+          sender_id: string;
+          content: string | null;
+          created_at: string | null;
+        }
+      >();
+
+      for (const msg of groupMessages ?? []) {
+        if (!latestByGroup.has(msg.group_chat_id)) {
+          latestByGroup.set(msg.group_chat_id, msg);
+        }
+      }
+
+      const senderIds = Array.from(
+        new Set((groupMessages ?? []).map((m) => m.sender_id).filter(Boolean))
+      );
+
+      let senderProfiles: Profile[] = [];
+      if (senderIds.length > 0) {
+        const { data: profiles, error: senderProfilesError } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url")
+          .in("id", senderIds);
+
+        if (senderProfilesError) {
+          console.error("Group sender profiles load error:", senderProfilesError);
+        } else {
+          senderProfiles = profiles ?? [];
+        }
+      }
+
+      const { data: unreadRows, error: unreadError } = await supabase
+        .from("group_chat_reads")
+        .select("group_chat_id, last_read_at")
+        .eq("user_id", currentUserId);
+
+      if (unreadError) {
+        console.error("Group reads load error:", unreadError);
+      }
+
+      const readMap = new Map<string, string | null>();
+      for (const row of unreadRows ?? []) {
+        readMap.set(row.group_chat_id, row.last_read_at ?? null);
+      }
+
+      const unreadCountMap = new Map<string, number>();
+      for (const groupId of groupIds) {
+        unreadCountMap.set(groupId, 0);
+      }
+
+      for (const msg of groupMessages ?? []) {
+        if (msg.sender_id === currentUserId) continue;
+
+        const lastReadAt = readMap.get(msg.group_chat_id);
+        const isUnread =
+          !lastReadAt ||
+          new Date(msg.created_at).getTime() > new Date(lastReadAt).getTime();
+
+        if (isUnread) {
+          unreadCountMap.set(
+            msg.group_chat_id,
+            (unreadCountMap.get(msg.group_chat_id) ?? 0) + 1
+          );
+        }
+      }
+
+      return (groups ?? []).map((group) => {
+        const latest = latestByGroup.get(group.id);
+        const author = senderProfiles.find((p) => p.id === latest?.sender_id);
+
+        return {
+          id: `group-${group.id}`,
+          kind: "group" as const,
+          href: `/chat/group/${group.id}`,
+          title: group.title ?? "Группа",
+          avatar_url: group.avatar_url ?? null,
+          lastMessage: latest?.content ?? null,
+          lastTime: latest?.created_at ?? null,
+          unread: unreadCountMap.get(group.id) ?? 0,
+          lastAuthorName: author?.full_name ?? null,
+        };
+      });
+    },
+    []
+  );
+
+  const loadDialogsSafe = useCallback(async () => {
+    if (!user?.id) return;
+
+    setLoading(true);
+
+    try {
+      const [directDialogs, groupDialogs] = await Promise.all([
+        loadDirectDialogs(user.id),
+        loadGroupDialogs(user.id),
+      ]);
+
+      const merged = [...directDialogs, ...groupDialogs].sort((a, b) => {
+        const aTime = a.lastTime ? new Date(a.lastTime).getTime() : 0;
+        const bTime = b.lastTime ? new Date(b.lastTime).getTime() : 0;
+        return bTime - aTime;
+      });
+
+      setDialogs(merged);
+    } catch (error) {
+      console.error("Error loading chat list:", error);
+    } finally {
+      setLoading(false);
     }
+  }, [user?.id, loadDirectDialogs, loadGroupDialogs]);
 
-    return (groups ?? []).map((group) => {
-      const latest = latestByGroup.get(group.id);
-      const author = senderProfiles.find((p) => p.id === latest?.sender_id);
+  useEffect(() => {
+    if (!user?.id) return;
+    loadDialogsSafe();
+  }, [user?.id, loadDialogsSafe]);
 
-      return {
-        id: `group-${group.id}`,
-        kind: "group" as const,
-        href: `/chat/group/${group.id}`,
-        title: group.title ?? "Группа",
-        avatar_url: group.avatar_url ?? null,
-        lastMessage: latest?.content ?? null,
-        lastTime: latest?.created_at ?? null,
-        unread: unreadCountMap.get(group.id) ?? 0,
-        lastAuthorName: author?.full_name ?? null,
-      };
-    });
-  }
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`chat-list-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "messages" },
+        () => {
+          loadDialogsSafe();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "group_chat_messages" },
+        () => {
+          loadDialogsSafe();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "group_chat_reads" },
+        () => {
+          loadDialogsSafe();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "group_chat_members" },
+        () => {
+          loadDialogsSafe();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, loadDialogsSafe]);
 
   const filteredDialogs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -301,8 +372,12 @@ export default function ChatList() {
         d.kind === "group"
           ? (d.lastAuthorName ?? "").toLowerCase().includes(q)
           : false;
+      const inUniversity =
+        d.kind === "direct"
+          ? (d.university ?? "").toLowerCase().includes(q)
+          : false;
 
-      return inTitle || inMessage || inAuthor;
+      return inTitle || inMessage || inAuthor || inUniversity;
     });
   }, [dialogs, searchQuery]);
 
@@ -332,34 +407,40 @@ export default function ChatList() {
   return (
     <div className="max-w-3xl mx-auto p-4 md:p-6 min-h-screen bg-gray-50 dark:bg-[#020617] transition-colors duration-500">
       <div className="flex items-center justify-between mb-6 gap-3">
-  <div className="flex items-center gap-3">
-    <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
-      Сообщения
-    </h2>
-    <div className="p-2 bg-indigo-100 dark:bg-indigo-500/10 rounded-full">
-      <MessageSquare className="text-indigo-600 dark:text-indigo-400" size={20} />
-    </div>
-  </div>
+        <div className="flex items-center gap-3">
+          <h2 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+            Сообщения
+          </h2>
+          <div className="p-2 bg-indigo-100 dark:bg-indigo-500/10 rounded-full">
+            <MessageSquare
+              className="text-indigo-600 dark:text-indigo-400"
+              size={20}
+            />
+          </div>
+        </div>
 
-  <Link
-    href="/chat/create-group"
-    className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all whitespace-nowrap"
-  >
-    <Users size={16} />
-    Создать группу
-  </Link>
-</div>
+        <Link
+          href="/chat/create-group"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all whitespace-nowrap"
+        >
+          <Users size={16} />
+          Создать группу
+        </Link>
+      </div>
 
-<div className="relative mb-6">
-  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-  <input
-    type="text"
-    placeholder="Поиск чатов..."
-    value={searchQuery}
-    onChange={(e) => setSearchQuery(e.target.value)}
-    className="w-full pl-12 pr-4 py-3.5 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 dark:text-white transition-all shadow-sm"
-  />
-</div>
+      <div className="relative mb-6">
+        <Search
+          className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+          size={18}
+        />
+        <input
+          type="text"
+          placeholder="Поиск чатов..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-12 pr-4 py-3.5 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500/20 dark:text-white transition-all shadow-sm"
+        />
+      </div>
 
       <div className="space-y-2">
         {loading ? (
@@ -385,7 +466,12 @@ export default function ChatList() {
               <div className="relative shrink-0">
                 <div className="w-14 h-14 rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-50 dark:border-gray-700 relative">
                   {item.avatar_url ? (
-                    <Image src={item.avatar_url} alt="avatar" fill className="object-cover" />
+                    <Image
+                      src={item.avatar_url}
+                      alt="avatar"
+                      fill
+                      className="object-cover"
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-gray-400">
                       {item.kind === "group" ? <Users size={24} /> : <User size={24} />}
@@ -407,6 +493,13 @@ export default function ChatList() {
                       {item.title}
                     </p>
 
+                    {item.kind === "direct" && item.is_verified && (
+                      <ShieldCheck
+                        size={14}
+                        className="text-indigo-500 shrink-0"
+                      />
+                    )}
+
                     {item.kind === "group" && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 font-semibold shrink-0">
                         Группа
@@ -418,6 +511,13 @@ export default function ChatList() {
                     {item.lastTime ? formatTime(item.lastTime) : ""}
                   </span>
                 </div>
+
+                {item.kind === "direct" && item.university ? (
+                  <div className="mb-1 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-indigo-500">
+                    <GraduationCap size={12} />
+                    {item.university}
+                  </div>
+                ) : null}
 
                 <p
                   className={`text-sm truncate ${
