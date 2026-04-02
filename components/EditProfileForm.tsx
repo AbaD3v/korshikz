@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/hooks/utils/supabase/client";
+import { supabase } from "@/lib/supabaseClient.js";
 import { toast } from "sonner";
 import { 
   Save, X, User, GraduationCap, 

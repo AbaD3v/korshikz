@@ -3,10 +3,23 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  User, Sparkles, GraduationCap, Home, Users2, Info, 
-  ChevronRight, ChevronLeft, Check, Camera, MapPin, 
-  Sun, Moon, Coffee, Dog, Cigarette 
+import {
+  User,
+  Sparkles,
+  GraduationCap,
+  Home,
+  Users2,
+  Info,
+  ChevronLeft,
+  Check,
+  Camera,
+  MapPin,
+  Sun,
+  Moon,
+  Coffee,
+  Dog,
+  Cigarette,
+  ShieldCheck,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -23,8 +36,9 @@ const STATUS_MAP: Record<number, string> = {
   1: "searching",
   2: "have_flat",
   3: "free_spot",
-  4: "inactive"
+  4: "inactive",
 };
+
 export default function OnboardingPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -33,7 +47,7 @@ export default function OnboardingPage() {
   const [saving, setSaving] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  
+
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
 
@@ -42,7 +56,7 @@ export default function OnboardingPage() {
     age: 20,
     university: "",
     city: "Алматы",
-    status: 1, 
+    status: 1,
     budget: 120000,
     cleanliness_level: 3,
     noise_tolerance: 3,
@@ -57,14 +71,22 @@ export default function OnboardingPage() {
     preferred_smoking: false,
     about_me: "",
     isOnboarded: false,
-    phone: ""
+    phone: "",
   });
 
   useEffect(() => {
     setMounted(true);
+
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return router.replace("/login");
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+
       setUserId(user.id);
 
       const { data: profile } = await supabase
@@ -74,17 +96,31 @@ export default function OnboardingPage() {
         .maybeSingle();
 
       if (profile) {
-        if (profile.isOnboarded) return router.replace(`/profile/${user.id}`);
-        const numericStatus = Object.keys(STATUS_MAP).find(key => STATUS_MAP[Number(key)] === profile.status);
-        setForm((prev: any) => ({ 
-          ...prev, 
-          ...profile, 
-          status: numericStatus ? Number(numericStatus) : prev.status 
+        if (profile.isOnboarded) {
+          router.replace(
+            `/profile/${user.id}${profile.is_verified ? "" : "?verify=1"}`
+          );
+          return;
+        }
+
+        const numericStatus = Object.keys(STATUS_MAP).find(
+          (key) => STATUS_MAP[Number(key)] === profile.status
+        );
+
+        setForm((prev: any) => ({
+          ...prev,
+          ...profile,
+          status: numericStatus ? Number(numericStatus) : prev.status,
         }));
-        if (profile.avatar_url) setAvatarPreview(profile.avatar_url);
+
+        if (profile.avatar_url) {
+          setAvatarPreview(profile.avatar_url);
+        }
       }
+
       setLoading(false);
     }
+
     init();
   }, [router]);
 
@@ -96,84 +132,61 @@ export default function OnboardingPage() {
       return;
     }
 
-    if (isLast) {
-      setSaving(true);
-      try {
-        let finalAvatarUrl = form.avatar_url;
-
-        if (avatarFile && userId) {
-          const fileExt = avatarFile.name.split('.').pop();
-          const fileName = `${userId}-${Date.now()}.${fileExt}`;
-          
-          const { error: uploadError } = await supabase.storage
-            .from('avatars')
-            .upload(fileName, avatarFile, { upsert: true });
-
-          if (uploadError) throw uploadError;
-
-          const { data: publicUrlData } = supabase.storage
-            .from('avatars')
-            .getPublicUrl(fileName);
-          
-          finalAvatarUrl = publicUrlData.publicUrl;
-        }
-
-        const finalPayload = {
-          ...form,
-          id: userId,
-          avatar_url: finalAvatarUrl,
-          isOnboarded: true,
-          status: STATUS_MAP[form.status] || "searching",
-          budget: Number(form.budget),
-          age: form.age ? Number(form.age) : null,
-          cleanliness_level: Number(form.cleanliness_level),
-          noise_tolerance: Number(form.noise_tolerance)
-        };
-
-        const { error } = await supabase.from("profiles").upsert(finalPayload);
-        if (error) throw error;
-
-        if (form.status === 1 || form.status === 2) {
-          await createAutoListing(finalAvatarUrl);
-        }
-
-        setIsFinished(true);
-        setTimeout(() => router.push(`/profile/${userId}`), 2200);
-      } catch (err: any) {
-        console.error("Save error:", err);
-        alert(`Ошибка при сохранении: ${err.message}`);
-      } finally {
-        setSaving(false);
-      }
-    } else {
-      setStep(s => s + 1);
+    if (!isLast) {
+      setStep((s) => s + 1);
+      return;
     }
-  };
 
-  const createAutoListing = async (avatarUrl?: string) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id;
-    if (!userId) return;
-
-    const payload = {
-      user_id: userId,
-      status: STATUS_MAP[form.status] || "searching",
-      full_name: form.full_name,
-      university: form.university,
-      address: form.preferred_location || form.university || "Алматы",
-      city: form.city || "Алматы",
-      price: Number(form.budget) || 0,
-      image_url: avatarUrl
-    };
+    setSaving(true);
 
     try {
-      await fetch('/api/listings/sync', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-    } catch (err) {
-      console.error("Ошибка синхронизации листинга:", err);
+      if (!userId) {
+        throw new Error("Пользователь не найден");
+      }
+
+      let finalAvatarUrl = form.avatar_url || null;
+
+      if (avatarFile) {
+        const fileExt = avatarFile.name.split(".").pop();
+        const fileName = `${userId}-${Date.now()}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("avatars")
+          .upload(fileName, avatarFile, { upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabase.storage
+          .from("avatars")
+          .getPublicUrl(fileName);
+
+        finalAvatarUrl = publicUrlData.publicUrl;
+      }
+
+      const finalPayload = {
+        ...form,
+        id: userId,
+        avatar_url: finalAvatarUrl,
+        isOnboarded: true,
+        status: STATUS_MAP[form.status] || "searching",
+        budget: Number(form.budget),
+        age: form.age ? Number(form.age) : null,
+        cleanliness_level: Number(form.cleanliness_level),
+        noise_tolerance: Number(form.noise_tolerance),
+      };
+
+      const { error } = await supabase.from("profiles").upsert(finalPayload);
+      if (error) throw error;
+
+      setIsFinished(true);
+      setTimeout(() => {
+        router.push(`/profile/${userId}?verify=1`);
+      }, 2200);
+    } catch (err: any) {
+      console.error("Save error:", err);
+      alert(`Ошибка при сохранении: ${err.message}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -183,16 +196,25 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-[#FDFDFF] dark:bg-[#020617] p-6 md:p-12 text-slate-900 dark:text-white">
       <AnimatePresence>
         {isFinished && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9, filter: "blur(10px)" }} 
-            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }} 
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, filter: "blur(10px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 dark:bg-slate-950/80 backdrop-blur-md"
           >
-            <div className="text-center space-y-6">
+            <div className="text-center space-y-6 px-6">
               <div className="mx-auto w-20 h-20 bg-indigo-500 rounded-full flex items-center justify-center shadow-xl shadow-indigo-500/40">
                 <Check size={40} className="text-white" strokeWidth={3} />
               </div>
-              <h2 className="text-3xl font-black italic uppercase tracking-tighter">Профиль готов</h2>
+
+              <div className="space-y-2">
+                <h2 className="text-3xl font-black italic uppercase tracking-tighter">
+                  Профиль готов
+                </h2>
+                <div className="flex items-center justify-center gap-2 text-sm font-bold text-slate-500 dark:text-slate-300">
+                  <ShieldCheck size={16} />
+                  Переходим к подтверждению студенческого статуса
+                </div>
+              </div>
             </div>
           </motion.div>
         )}
@@ -201,55 +223,122 @@ export default function OnboardingPage() {
       <div className="max-w-4xl mx-auto">
         <header className="mb-12">
           <div className="flex gap-1 mb-6">
-            {STEPS.map(s => (
-              <div key={s.id} className={`h-1.5 rounded-full transition-all duration-500 ${step >= s.id ? "w-10 bg-indigo-500" : "w-3 bg-slate-200 dark:bg-slate-800"}`} />
+            {STEPS.map((s) => (
+              <div
+                key={s.id}
+                className={`h-1.5 rounded-full transition-all duration-500 ${
+                  step >= s.id
+                    ? "w-10 bg-indigo-500"
+                    : "w-3 bg-slate-200 dark:bg-slate-800"
+                }`}
+              />
             ))}
           </div>
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-500 mb-2">Шаг {step} из 6</p>
+
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-500 mb-2">
+            Шаг {step} из 6
+          </p>
+
           <h1 className="text-5xl md:text-6xl font-black italic uppercase tracking-tighter leading-none">
-            {STEPS.find(s => s.id === step)?.title}
+            {STEPS.find((s) => s.id === step)?.title}
           </h1>
         </header>
 
         <main className="min-h-[400px]">
           <AnimatePresence mode="wait">
-            <motion.div key={step} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
-              
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+            >
               {step === 1 && (
                 <div className="grid md:grid-cols-2 gap-8 items-center">
                   <div className="space-y-6">
                     <div className="grid grid-cols-4 gap-4">
                       <div className="col-span-3">
                         <InputGroup label="Твое имя">
-                          <input value={form.full_name} onChange={e => setForm({...form, full_name: e.target.value})} placeholder="Имя" className="premium-input" />
+                          <input
+                            value={form.full_name}
+                            onChange={(e) =>
+                              setForm({ ...form, full_name: e.target.value })
+                            }
+                            placeholder="Имя"
+                            className="premium-input"
+                          />
                         </InputGroup>
                       </div>
+
                       <div className="col-span-1">
                         <InputGroup label="Возраст">
-                          <input type="number" value={form.age} onChange={e => setForm({...form, age: e.target.value})} placeholder="20" className="premium-input text-center" />
+                          <input
+                            type="number"
+                            value={form.age}
+                            onChange={(e) =>
+                              setForm({ ...form, age: e.target.value })
+                            }
+                            placeholder="20"
+                            className="premium-input text-center"
+                          />
                         </InputGroup>
                       </div>
                     </div>
+
                     <InputGroup label="Номер телефона">
-                      <input type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} placeholder="+7 (707) 000-00-00" className="premium-input" />
+                      <input
+                        type="tel"
+                        value={form.phone}
+                        onChange={(e) =>
+                          setForm({ ...form, phone: e.target.value })
+                        }
+                        placeholder="+7 (707) 000-00-00"
+                        className="premium-input"
+                      />
                     </InputGroup>
+
                     <InputGroup label="Твой Университет">
                       <div className="relative flex items-center">
-                        <GraduationCap className="absolute left-5 text-indigo-500 pointer-events-none z-10" size={20} />
-                        <input value={form.university} onChange={e => setForm({...form, university: e.target.value})} placeholder="Напр: AIU" style={{ paddingLeft: '3.5rem' }} className="premium-input w-full" />
+                        <GraduationCap
+                          className="absolute left-5 text-indigo-500 pointer-events-none z-10"
+                          size={20}
+                        />
+                        <input
+                          value={form.university}
+                          onChange={(e) =>
+                            setForm({ ...form, university: e.target.value })
+                          }
+                          placeholder="Напр: AIU"
+                          style={{ paddingLeft: "3.5rem" }}
+                          className="premium-input w-full"
+                        />
                       </div>
                     </InputGroup>
                   </div>
+
                   <div className="flex justify-center">
                     <div className="relative w-40 h-40 rounded-[3rem] bg-slate-100 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center overflow-hidden group">
-                      {avatarPreview ? <img src={avatarPreview} className="w-full h-full object-cover" alt="Avatar" /> : <Camera className="text-slate-400" size={32} />}
-                      <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setAvatarFile(file);
-                          setAvatarPreview(URL.createObjectURL(file));
-                        }
-                      }} />
+                      {avatarPreview ? (
+                        <img
+                          src={avatarPreview}
+                          className="w-full h-full object-cover"
+                          alt="Avatar"
+                        />
+                      ) : (
+                        <Camera className="text-slate-400" size={32} />
+                      )}
+
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setAvatarFile(file);
+                            setAvatarPreview(URL.createObjectURL(file));
+                          }
+                        }}
+                      />
                     </div>
                   </div>
                 </div>
@@ -259,17 +348,67 @@ export default function OnboardingPage() {
                 <div className="grid md:grid-cols-2 gap-10">
                   <InputGroup label="Режим дня">
                     <div className="space-y-4">
-                      <OptionCard active={form.schedule_type === 'morning'} icon={<Sun />} label="Жаворонок" desc="Просыпаюсь рано, ложусь рано." onClick={() => setForm({...form, schedule_type: 'morning'})} />
-                      <OptionCard active={form.schedule_type === 'evening'} icon={<Moon />} label="Сова" desc="Активен ночью, люблю поспать подольше." onClick={() => setForm({...form, schedule_type: 'evening'})} />
-                      <OptionCard active={form.schedule_type === 'flexible'} icon={<Coffee />} label="Гибкий график" desc="Всегда по-разному." onClick={() => setForm({...form, schedule_type: 'flexible'})} />
+                      <OptionCard
+                        active={form.schedule_type === "morning"}
+                        icon={<Sun />}
+                        label="Жаворонок"
+                        desc="Просыпаюсь рано, ложусь рано."
+                        onClick={() =>
+                          setForm({ ...form, schedule_type: "morning" })
+                        }
+                      />
+                      <OptionCard
+                        active={form.schedule_type === "evening"}
+                        icon={<Moon />}
+                        label="Сова"
+                        desc="Активен ночью, люблю поспать подольше."
+                        onClick={() =>
+                          setForm({ ...form, schedule_type: "evening" })
+                        }
+                      />
+                      <OptionCard
+                        active={form.schedule_type === "flexible"}
+                        icon={<Coffee />}
+                        label="Гибкий график"
+                        desc="Всегда по-разному."
+                        onClick={() =>
+                          setForm({ ...form, schedule_type: "flexible" })
+                        }
+                      />
                     </div>
                   </InputGroup>
+
                   <div className="space-y-10 bg-indigo-500/5 p-8 rounded-[2.5rem]">
                     <InputGroup label={`Чистоплотность: ${form.cleanliness_level}`}>
-                      <input type="range" min="1" max="5" value={form.cleanliness_level} onChange={e => setForm({...form, cleanliness_level: e.target.value})} className="premium-range" />
+                      <input
+                        type="range"
+                        min="1"
+                        max="5"
+                        value={form.cleanliness_level}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            cleanliness_level: e.target.value,
+                          })
+                        }
+                        className="premium-range"
+                      />
                     </InputGroup>
+
                     <InputGroup label={`Шумоустойчивость: ${form.noise_tolerance}`}>
-                      <input type="range" min="1" max="5" value={form.noise_tolerance} onChange={e => setForm({...form, noise_tolerance: e.target.value})} className="premium-range" />
+                      <input
+                        type="range"
+                        min="1"
+                        max="5"
+                        value={form.noise_tolerance}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            noise_tolerance: e.target.value,
+                          })
+                        }
+                        className="premium-range"
+                      />
                     </InputGroup>
                   </div>
                 </div>
@@ -279,17 +418,51 @@ export default function OnboardingPage() {
                 <div className="space-y-10">
                   <InputGroup label="Твоя ситуация">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                      <OptionCard active={form.status === 1} icon={<Users2 />} label="Ищу сожителей" desc="Нет жилья, ищу компанию." onClick={() => setForm({...form, status: 1})} />
-                      <OptionCard active={form.status === 2} icon={<Home />} label="Ищу к себе" desc="Есть квартира, нужен сосед." onClick={() => setForm({...form, status: 2})} />
-                      <OptionCard active={form.status === 3} icon={<Check />} label="Уже с жильем" desc="Просто в комьюнити." onClick={() => setForm({...form, status: 3})} />
+                      <OptionCard
+                        active={form.status === 1}
+                        icon={<Users2 />}
+                        label="Ищу сожителей"
+                        desc="Нет жилья, ищу компанию."
+                        onClick={() => setForm({ ...form, status: 1 })}
+                      />
+                      <OptionCard
+                        active={form.status === 2}
+                        icon={<Home />}
+                        label="Ищу к себе"
+                        desc="Есть квартира, нужен сосед."
+                        onClick={() => setForm({ ...form, status: 2 })}
+                      />
+                      <OptionCard
+                        active={form.status === 3}
+                        icon={<Check />}
+                        label="Уже с жильем"
+                        desc="Просто в комьюнити."
+                        onClick={() => setForm({ ...form, status: 3 })}
+                      />
                     </div>
                   </InputGroup>
+
                   <div className="grid grid-cols-2 gap-6">
                     <InputGroup label="Факультет">
-                      <input value={form.faculty} onChange={e => setForm({...form, faculty: e.target.value})} placeholder="Напр: IT" className="premium-input" />
+                      <input
+                        value={form.faculty}
+                        onChange={(e) =>
+                          setForm({ ...form, faculty: e.target.value })
+                        }
+                        placeholder="Напр: IT"
+                        className="premium-input"
+                      />
                     </InputGroup>
+
                     <InputGroup label="Курс">
-                      <input value={form.study_type} onChange={e => setForm({...form, study_type: e.target.value})} placeholder="Напр: 2 курс" className="premium-input" />
+                      <input
+                        value={form.study_type}
+                        onChange={(e) =>
+                          setForm({ ...form, study_type: e.target.value })
+                        }
+                        placeholder="Напр: 2 курс"
+                        className="premium-input"
+                      />
                     </InputGroup>
                   </div>
                 </div>
@@ -299,19 +472,48 @@ export default function OnboardingPage() {
                 <div className="max-w-2xl mx-auto space-y-12">
                   <div className="grid grid-cols-2 gap-4">
                     <InputGroup label="Город">
-                      <select value={form.city} onChange={e => setForm({...form, city: e.target.value})} className="premium-input bg-white dark:bg-slate-900">
+                      <select
+                        value={form.city}
+                        onChange={(e) =>
+                          setForm({ ...form, city: e.target.value })
+                        }
+                        className="premium-input bg-white dark:bg-slate-900"
+                      >
                         <option value="Алматы">Алматы</option>
                         <option value="Астана">Астана</option>
                       </select>
                     </InputGroup>
+
                     <InputGroup label="Месячный бюджет (₸)">
-                      <input type="number" value={form.budget} onChange={e => setForm({...form, budget: e.target.value})} className="premium-input text-indigo-500 font-black" />
+                      <input
+                        type="number"
+                        value={form.budget}
+                        onChange={(e) =>
+                          setForm({ ...form, budget: e.target.value })
+                        }
+                        className="premium-input text-indigo-500 font-black"
+                      />
                     </InputGroup>
                   </div>
+
                   <InputGroup label="Желаемая локация">
                     <div className="relative flex items-center">
-                      <MapPin className="absolute left-5 text-indigo-500 pointer-events-none" size={20} />
-                      <input value={form.preferred_location} onChange={e => setForm({...form, preferred_location: e.target.value})} placeholder="Район или ЖК" className="premium-input w-full" style={{ paddingLeft: '3.5rem' }} />
+                      <MapPin
+                        className="absolute left-5 text-indigo-500 pointer-events-none"
+                        size={20}
+                      />
+                      <input
+                        value={form.preferred_location}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            preferred_location: e.target.value,
+                          })
+                        }
+                        placeholder="Район или ЖК"
+                        className="premium-input w-full"
+                        style={{ paddingLeft: "3.5rem" }}
+                      />
                     </div>
                   </InputGroup>
                 </div>
@@ -321,110 +523,299 @@ export default function OnboardingPage() {
                 <div className="grid md:grid-cols-2 gap-10">
                   <div className="space-y-8">
                     <InputGroup label="Предпочтения по полу">
-                      <select value={form.preferred_gender} onChange={e => setForm({...form, preferred_gender: e.target.value})} className="premium-input bg-white dark:bg-slate-900">
+                      <select
+                        value={form.preferred_gender}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            preferred_gender: e.target.value,
+                          })
+                        }
+                        className="premium-input bg-white dark:bg-slate-900"
+                      >
                         <option value="any">Любой</option>
                         <option value="male">Парни</option>
                         <option value="female">Девушки</option>
                       </select>
                     </InputGroup>
+
                     <InputGroup label="Возраст">
                       <div className="flex items-center gap-4">
-                        <input type="number" value={form.preferred_age_min} onChange={e => setForm({...form, preferred_age_min: e.target.value})} className="premium-input text-center" />
+                        <input
+                          type="number"
+                          value={form.preferred_age_min}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              preferred_age_min: e.target.value,
+                            })
+                          }
+                          className="premium-input text-center"
+                        />
                         <span className="text-slate-400">—</span>
-                        <input type="number" value={form.preferred_age_max} onChange={e => setForm({...form, preferred_age_max: e.target.value})} className="premium-input text-center" />
+                        <input
+                          type="number"
+                          value={form.preferred_age_max}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              preferred_age_max: e.target.value,
+                            })
+                          }
+                          className="premium-input text-center"
+                        />
                       </div>
                     </InputGroup>
                   </div>
+
                   <div className="bg-slate-50 dark:bg-white/5 p-8 rounded-[3rem] space-y-6 flex flex-col justify-center">
-                    <ToggleItem active={form.preferred_pets} label="Питомцы" desc="Ок с животными" icon={<Dog />} onClick={() => setForm({...form, preferred_pets: !form.preferred_pets})} />
-                    <ToggleItem active={form.preferred_smoking} label="Курение" desc="Ок с курением" icon={<Cigarette />} onClick={() => setForm({...form, preferred_smoking: !form.preferred_smoking})} />
+                    <ToggleItem
+                      active={form.preferred_pets}
+                      label="Питомцы"
+                      desc="Ок с животными"
+                      icon={<Dog />}
+                      onClick={() =>
+                        setForm({
+                          ...form,
+                          preferred_pets: !form.preferred_pets,
+                        })
+                      }
+                    />
+                    <ToggleItem
+                      active={form.preferred_smoking}
+                      label="Курение"
+                      desc="Ок с курением"
+                      icon={<Cigarette />}
+                      onClick={() =>
+                        setForm({
+                          ...form,
+                          preferred_smoking: !form.preferred_smoking,
+                        })
+                      }
+                    />
                   </div>
                 </div>
               )}
 
               {step === 6 && (
                 <InputGroup label="О себе (Manifesto)">
-                  <textarea value={form.about_me} onChange={e => setForm({...form, about_me: e.target.value})} className="premium-input min-h-[200px] py-6 resize-none" placeholder="Расскажи о своих привычках и интересах..." />
+                  <textarea
+                    value={form.about_me}
+                    onChange={(e) =>
+                      setForm({ ...form, about_me: e.target.value })
+                    }
+                    className="premium-input min-h-[200px] py-6 resize-none"
+                    placeholder="Расскажи о своих привычках и интересах..."
+                  />
                 </InputGroup>
               )}
-
             </motion.div>
           </AnimatePresence>
         </main>
 
         <footer className="mt-16 flex justify-between items-center">
-          <button onClick={() => setStep(s => s - 1)} disabled={step === 1 || saving} className="flex items-center gap-2 font-bold uppercase text-[10px] tracking-widest text-slate-400 disabled:opacity-0 transition-all">
+          <button
+            onClick={() => setStep((s) => s - 1)}
+            disabled={step === 1 || saving}
+            className="flex items-center gap-2 font-bold uppercase text-[10px] tracking-widest text-slate-400 disabled:opacity-0 transition-all"
+          >
             <ChevronLeft size={16} /> Назад
           </button>
-          
-          <button onClick={handleNext} disabled={saving} className="px-10 py-5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-full font-black uppercase text-xs tracking-widest shadow-xl hover:scale-105 transition-all active:scale-95">
-            {saving ? "Загрузка..." : step === 6 ? "Готово" : "Далее"}
+
+          <button
+            onClick={handleNext}
+            disabled={saving}
+            className="px-10 py-5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-full font-black uppercase text-xs tracking-widest shadow-xl hover:scale-105 transition-all active:scale-95"
+          >
+            {saving ? "Сохраняем..." : step === 6 ? "Завершить" : "Далее"}
           </button>
         </footer>
       </div>
 
       <style jsx global>{`
         .premium-input {
-          width: 100%; padding: 1rem 1.25rem; background: transparent;
-          border: 2px solid #F1F5F9; border-radius: 1.25rem; font-size: 0.875rem;
-          font-weight: 700; outline: none; transition: 0.3s;
+          width: 100%;
+          padding: 1rem 1.25rem;
+          background: transparent;
+          border: 2px solid #f1f5f9;
+          border-radius: 1.25rem;
+          font-size: 0.875rem;
+          font-weight: 700;
+          outline: none;
+          transition: 0.3s;
         }
-        .dark .premium-input { border-color: #1E293B; color: white; }
-        .premium-input:focus { border-color: #6366F1; background: #fff; }
-        .dark .premium-input:focus { background: #0F172A; }
-        .premium-range { width: 100%; height: 5px; background: #E2E8F0; appearance: none; border-radius: 10px; outline: none; }
-        .dark .premium-range { background: #1E293B; }
-        .premium-range::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; background: #6366F1; border-radius: 50%; cursor: pointer; border: 3px solid #fff; box-shadow: 0 0 10px rgba(99, 102, 241, 0.3); }
+
+        .dark .premium-input {
+          border-color: #1e293b;
+          color: white;
+        }
+
+        .premium-input:focus {
+          border-color: #6366f1;
+          background: #fff;
+        }
+
+        .dark .premium-input:focus {
+          background: #0f172a;
+        }
+
+        .premium-range {
+          width: 100%;
+          height: 5px;
+          background: #e2e8f0;
+          appearance: none;
+          border-radius: 10px;
+          outline: none;
+        }
+
+        .dark .premium-range {
+          background: #1e293b;
+        }
+
+        .premium-range::-webkit-slider-thumb {
+          appearance: none;
+          width: 18px;
+          height: 18px;
+          background: #6366f1;
+          border-radius: 50%;
+          cursor: pointer;
+          border: 3px solid #fff;
+          box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+        }
       `}</style>
     </div>
   );
 }
 
-function InputGroup({ label, children }: any) {
+function InputGroup({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="space-y-3">
-      <label className="text-[10px] font-black uppercase text-indigo-500/70 tracking-widest ml-2">{label}</label>
+      <label className="text-[10px] font-black uppercase text-indigo-500/70 tracking-widest ml-2">
+        {label}
+      </label>
       {children}
     </div>
   );
 }
 
-function OptionCard({ active, onClick, label, desc, icon }: any) {
+function OptionCard({
+  active,
+  onClick,
+  label,
+  desc,
+  icon,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  desc?: string;
+  icon: React.ReactNode;
+}) {
   return (
-    <motion.button 
+    <motion.button
       whileTap={{ scale: 0.97 }}
-      onClick={onClick} 
+      onClick={onClick}
       className={`w-full flex flex-col items-start gap-2.5 p-5 rounded-[1.8rem] border-2 transition-all text-left ${
-        active 
-          ? "border-indigo-500 bg-indigo-500 text-white shadow-xl shadow-indigo-500/25 scale-[1.02]" 
+        active
+          ? "border-indigo-500 bg-indigo-500 text-white shadow-xl shadow-indigo-500/25 scale-[1.02]"
           : "border-slate-100 dark:border-slate-800/50 text-slate-500 hover:border-indigo-200 dark:hover:border-indigo-800/30 bg-white/50 dark:bg-slate-900/50"
       }`}
     >
-      <div className={`p-2.5 rounded-xl ${active ? "bg-white/20 text-white" : "bg-indigo-50 text-indigo-500 dark:bg-indigo-500/10"}`}>
-        {React.isValidElement(icon) ? React.cloneElement(icon as React.ReactElement<any>, { size: 20 }) : icon}
+      <div
+        className={`p-2.5 rounded-xl ${
+          active
+            ? "bg-white/20 text-white"
+            : "bg-indigo-50 text-indigo-500 dark:bg-indigo-500/10"
+        }`}
+      >
+        {React.isValidElement(icon)
+          ? React.cloneElement(icon as React.ReactElement<any>, { size: 20 })
+          : icon}
       </div>
+
       <div>
-        <div className="font-black uppercase text-[10px] tracking-widest mb-0.5">{label}</div>
-        {desc && <div className={`text-[9px] leading-tight font-medium ${active ? "text-white/70" : "text-slate-400"}`}>{desc}</div>}
+        <div className="font-black uppercase text-[10px] tracking-widest mb-0.5">
+          {label}
+        </div>
+        {desc && (
+          <div
+            className={`text-[9px] leading-tight font-medium ${
+              active ? "text-white/70" : "text-slate-400"
+            }`}
+          >
+            {desc}
+          </div>
+        )}
       </div>
     </motion.button>
   );
 }
 
-function ToggleItem({ active, label, desc, icon, onClick }: any) {
+function ToggleItem({
+  active,
+  label,
+  desc,
+  icon,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  desc?: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+}) {
   return (
-    <div onClick={onClick} className="flex items-center justify-between cursor-pointer group py-1">
+    <div
+      onClick={onClick}
+      className="flex items-center justify-between cursor-pointer group py-1"
+    >
       <div className="flex items-center gap-3">
-        <div className={`p-2.5 rounded-xl transition-colors ${active ? "bg-indigo-500 text-white" : "bg-white dark:bg-slate-800 text-slate-400"}`}>
-          {React.isValidElement(icon) ? React.cloneElement(icon as React.ReactElement<any>, { size: 16 }) : icon}
+        <div
+          className={`p-2.5 rounded-xl transition-colors ${
+            active
+              ? "bg-indigo-500 text-white"
+              : "bg-white dark:bg-slate-800 text-slate-400"
+          }`}
+        >
+          {React.isValidElement(icon)
+            ? React.cloneElement(icon as React.ReactElement<any>, { size: 16 })
+            : icon}
         </div>
+
         <div className="flex flex-col">
-          <span className={`text-[10px] font-black uppercase tracking-tight ${active ? "text-slate-900 dark:text-white" : "text-slate-500"}`}>{label}</span>
-          {desc && <span className="text-[8px] text-slate-400 font-medium leading-none mt-1">{desc}</span>}
+          <span
+            className={`text-[10px] font-black uppercase tracking-tight ${
+              active
+                ? "text-slate-900 dark:text-white"
+                : "text-slate-500"
+            }`}
+          >
+            {label}
+          </span>
+          {desc && (
+            <span className="text-[8px] text-slate-400 font-medium leading-none mt-1">
+              {desc}
+            </span>
+          )}
         </div>
       </div>
-      <div className={`w-9 h-5 rounded-full p-1 transition-colors ${active ? "bg-indigo-500" : "bg-slate-200 dark:bg-slate-700"}`}>
-        <div className={`w-3 h-3 bg-white rounded-full transition-transform ${active ? "translate-x-4" : "translate-x-0"}`} />
+
+      <div
+        className={`w-9 h-5 rounded-full p-1 transition-colors ${
+          active ? "bg-indigo-500" : "bg-slate-200 dark:bg-slate-700"
+        }`}
+      >
+        <div
+          className={`w-3 h-3 bg-white rounded-full transition-transform ${
+            active ? "translate-x-4" : "translate-x-0"
+          }`}
+        />
       </div>
     </div>
   );
