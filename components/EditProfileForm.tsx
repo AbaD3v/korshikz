@@ -1,348 +1,240 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from "@/hooks/utils/supabase/client";
+import { toast } from "sonner";
+import { 
+  Save, X, User, GraduationCap, 
+  MapPin, Hash, Heart, Info,
+  CheckCircle2, Sparkles
+} from "lucide-react";
 
+// Интерфейс на основе твоего JSON
 interface Profile {
   id: string;
+  email: string;
   full_name: string | null;
+  username: string | null;
   age: number | null;
+  gender: string | null;
   university: string | null;
+  faculty: string | null;
+  course: number | null;
+  city: string | null;
   hobbies: string | null;
   about_me: string | null;
   pets: boolean | null;
   smoking: boolean | null;
+  status: string | null;
+  budget: number | null;
   avatar_url: string | null;
+  is_verified: boolean;
 }
 
-interface EditProfileFormProps {
+interface Props {
   profile: Profile;
   onSave: (data: Profile) => void;
   onCancel: () => void;
 }
 
-interface FormState {
-  full_name: string;
-  age: string;
-  university: string;
-  hobbies: string;
-  about_me: string;
-  pets: boolean;
-  smoking: boolean;
-}
+export default function EditProfileForm({ profile, onSave, onCancel }: Props) {
+  // Инициализация строго по полям из JSON
+  const initialForm = useMemo(() => ({
+    full_name: profile.full_name ?? "",
+    username: profile.username ?? "",
+    age: profile.age ? String(profile.age) : "",
+    university: profile.university ?? "",
+    faculty: profile.faculty ?? "",
+    course: profile.course ? String(profile.course) : "",
+    city: profile.city ?? "",
+    hobbies: profile.hobbies ?? "",
+    about_me: profile.about_me ?? "",
+    status: profile.status ?? "searching",
+    budget: profile.budget ? String(profile.budget) : "0",
+    pets: Boolean(profile.pets),
+    smoking: Boolean(profile.smoking),
+  }), [profile]);
 
-interface FormErrors {
-  full_name?: string;
-  age?: string;
-  university?: string;
-  about_me?: string;
-  avatar?: string;
-  general?: string;
-}
-
-export default function EditProfileForm({
-  profile,
-  onSave,
-  onCancel,
-}: EditProfileFormProps) {
-  const initialForm: FormState = useMemo(
-    () => ({
-      full_name: profile.full_name ?? "",
-      age: profile.age ? String(profile.age) : "",
-      university: profile.university ?? "",
-      hobbies: profile.hobbies ?? "",
-      about_me: profile.about_me ?? "",
-      pets: Boolean(profile.pets),
-      smoking: Boolean(profile.smoking),
-    }),
-    [profile]
-  );
-
-  const [form, setForm] = useState<FormState>(initialForm);
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(
-    profile.avatar_url ?? null
-  );
+  const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
-  const [errors, setErrors] = useState<FormErrors>({});
 
-  useEffect(() => {
-    setForm(initialForm);
-    setAvatarPreview(profile.avatar_url ?? null);
-    setAvatarFile(null);
-    setErrors({});
-  }, [initialForm, profile.avatar_url]);
+  const isChanged = useMemo(() => 
+    JSON.stringify(form) !== JSON.stringify(initialForm), 
+  [form, initialForm]);
 
-  useEffect(() => {
-    if (!avatarFile) return;
-
-    const objectUrl = URL.createObjectURL(avatarFile);
-    setAvatarPreview(objectUrl);
-
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [avatarFile]);
-
-  const isChanged = useMemo(() => {
-    return (
-      form.full_name !== initialForm.full_name ||
-      form.age !== initialForm.age ||
-      form.university !== initialForm.university ||
-      form.hobbies !== initialForm.hobbies ||
-      form.about_me !== initialForm.about_me ||
-      form.pets !== initialForm.pets ||
-      form.smoking !== initialForm.smoking ||
-      avatarFile !== null
-    );
-  }, [form, initialForm, avatarFile]);
-
-  const handleChange = <K extends keyof FormState>(field: K, value: FormState[K]) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-    setErrors((prev) => ({ ...prev, [field]: undefined, general: undefined }));
-  };
-
-  const validateForm = () => {
-    const nextErrors: FormErrors = {};
-
-    const trimmedName = form.full_name.trim();
-    const trimmedUniversity = form.university.trim();
-    const trimmedAboutMe = form.about_me.trim();
-
-    if (!trimmedName) {
-      nextErrors.full_name = "Введите имя";
-    } else if (trimmedName.length < 2) {
-      nextErrors.full_name = "Имя слишком короткое";
-    }
-
-    if (form.age) {
-      const ageNumber = Number(form.age);
-      if (Number.isNaN(ageNumber)) {
-        nextErrors.age = "Возраст должен быть числом";
-      } else if (ageNumber < 16 || ageNumber > 100) {
-        nextErrors.age = "Возраст должен быть от 16 до 100";
-      }
-    }
-
-    if (trimmedUniversity.length > 100) {
-      nextErrors.university = "Слишком длинное название университета";
-    }
-
-    if (trimmedAboutMe.length > 300) {
-      nextErrors.about_me = "О себе должно быть не длиннее 300 символов";
-    }
-
-    if (avatarFile) {
-      const maxSizeMb = 3;
-      if (!avatarFile.type.startsWith("image/")) {
-        nextErrors.avatar = "Можно загружать только изображения";
-      } else if (avatarFile.size > maxSizeMb * 1024 * 1024) {
-        nextErrors.avatar = `Размер фото должен быть меньше ${maxSizeMb} МБ`;
-      }
-    }
-
-    setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
-  };
-
-  const uploadAvatar = async (file: File): Promise<string> => {
-    const fileExt = file.name.split(".").pop() || "jpg";
-    const fileName = `${profile.id}-${Date.now()}.${fileExt}`;
-    const filePath = `avatars/${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("avatars")
-      .upload(filePath, file, {
-        cacheControl: "3600",
-        upsert: true,
-      });
-
-    if (uploadError) {
-      throw new Error(uploadError.message);
-    }
-
-    const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
-    return data.publicUrl;
+  const handleChange = (field: string, value: any) => {
+    setForm(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) return;
-
     setSaving(true);
-    setErrors({});
-
+    const t = toast.loading("Обновление данных...");
     try {
-      let avatar_url = profile.avatar_url ?? null;
-
-      if (avatarFile) {
-        avatar_url = await uploadAvatar(avatarFile);
-      }
-
-      const updatePayload = {
-        full_name: form.full_name.trim() || null,
+      const payload = {
+        full_name: form.full_name || null,
+        username: form.username || null,
         age: form.age ? Number(form.age) : null,
-        university: form.university.trim() || null,
-        hobbies: form.hobbies.trim() || null,
-        about_me: form.about_me.trim() || null,
+        university: form.university || null,
+        faculty: form.faculty || null,
+        course: form.course ? Number(form.course) : null,
+        city: form.city || null,
+        hobbies: form.hobbies || null,
+        about_me: form.about_me || null,
+        status: form.status,
+        budget: Number(form.budget),
         pets: form.pets,
         smoking: form.smoking,
-        avatar_url,
       };
 
       const { error } = await supabase
         .from("profiles")
-        .update(updatePayload)
+        .update(payload)
         .eq("id", profile.id);
 
-      if (error) {
-        throw new Error(error.message);
-      }
+      if (error) throw error;
 
-      onSave({
-        ...profile,
-        ...updatePayload,
-      });
-    } catch (err) {
-      setErrors({
-        general: err instanceof Error ? err.message : "Не удалось сохранить профиль",
-      });
+      toast.success("Изменения сохранены", { id: t });
+      onSave({ ...profile, ...payload });
+    } catch (e: any) {
+      toast.error(e.message || "Ошибка", { id: t });
     } finally {
       setSaving(false);
     }
   };
 
+  const sectionClass = "p-5 rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#1a1d26]/50 space-y-4";
+  const labelClass = "block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1";
+  const inputClass = "w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white";
+
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-      <div className="mb-5">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Редактировать профиль
-        </h2>
+    <div className="max-w-3xl mx-auto bg-white dark:bg-[#161922] rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors">
+      {/* Header */}
+      <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-50 dark:bg-blue-500/10 rounded-lg">
+            <Sparkles size={20} className="text-blue-600 dark:text-blue-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold dark:text-white">Редактировать профиль</h2>
+            <p className="text-xs text-gray-500">{profile.email}</p>
+          </div>
+        </div>
+        <button onClick={onCancel} className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
+          <X size={22} />
+        </button>
       </div>
 
-      <div className="space-y-6">
-        <div className="flex flex-col gap-5 md:flex-row">
-          <div className="md:w-56">
-            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
-              Аватар
-            </label>
-
-            <div className="flex flex-col items-center rounded-2xl border border-dashed border-gray-300 p-4 dark:border-gray-700">
-              <div className="mb-3 h-28 w-28 overflow-hidden rounded-full border bg-gray-100 dark:bg-gray-800">
-                {avatarPreview ? (
-                  <img src={avatarPreview} alt="Аватар" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">
-                    Нет фото
-                  </div>
-                )}
-              </div>
-
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setAvatarFile(e.target.files?.[0] || null)}
-                className="block w-full text-sm"
-              />
-
-              {errors.avatar && (
-                <p className="mt-2 text-xs text-red-500">{errors.avatar}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex-1 space-y-4">
+      <div className="p-6 space-y-6">
+        {/* Personal Info */}
+        <section className={sectionClass}>
+          <h3 className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest flex items-center gap-2">
+            <User size={14} /> Личные данные
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium">Полное имя</label>
-              <input
-                className="w-full rounded-xl border px-3 py-2"
-                value={form.full_name}
-                onChange={(e) => handleChange("full_name", e.target.value)}
-              />
-              {errors.full_name && <p className="mt-1 text-xs text-red-500">{errors.full_name}</p>}
+              <label className={labelClass}>ФИО</label>
+              <input className={inputClass} value={form.full_name} onChange={e => handleChange("full_name", e.target.value)} />
             </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Возраст</label>
-                <input
-                  className="w-full rounded-xl border px-3 py-2"
-                  type="number"
-                  value={form.age}
-                  onChange={(e) => handleChange("age", e.target.value)}
-                />
-                {errors.age && <p className="mt-1 text-xs text-red-500">{errors.age}</p>}
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium">Университет</label>
-                <input
-                  className="w-full rounded-xl border px-3 py-2"
-                  value={form.university}
-                  onChange={(e) => handleChange("university", e.target.value)}
-                />
-                {errors.university && (
-                  <p className="mt-1 text-xs text-red-500">{errors.university}</p>
-                )}
-              </div>
+            <div>
+              <label className={labelClass}>Никнейм</label>
+              <input className={inputClass} value={form.username} onChange={e => handleChange("username", e.target.value)} />
+            </div>
+            <div>
+              <label className={labelClass}>Возраст</label>
+              <input className={inputClass} type="number" value={form.age} onChange={e => handleChange("age", e.target.value)} />
+            </div>
+            <div>
+              <label className={labelClass}>Город</label>
+              <input className={inputClass} value={form.city} onChange={e => handleChange("city", e.target.value)} />
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className="space-y-4">
+        {/* University Info */}
+        <section className={sectionClass}>
+          <h3 className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+            <GraduationCap size={14} /> Образование
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-1">
+              <label className={labelClass}>ВУЗ</label>
+              <input className={inputClass} value={form.university} onChange={e => handleChange("university", e.target.value)} />
+            </div>
+            <div>
+              <label className={labelClass}>Факультет</label>
+              <input className={inputClass} value={form.faculty} onChange={e => handleChange("faculty", e.target.value)} />
+            </div>
+            <div>
+              <label className={labelClass}>Курс</label>
+              <input className={inputClass} type="number" value={form.course} onChange={e => handleChange("course", e.target.value)} />
+            </div>
+          </div>
+        </section>
+
+        {/* Preferences & Bio */}
+        <section className={sectionClass}>
+          <h3 className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest flex items-center gap-2">
+            <Info size={14} /> Дополнительно
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>Статус</label>
+              <select className={inputClass} value={form.status} onChange={e => handleChange("status", e.target.value)}>
+                <option value="searching">В поиске</option>
+                <option value="staying">Уже живу</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Бюджет (₸)</label>
+              <input className={inputClass} type="number" value={form.budget} onChange={e => handleChange("budget", e.target.value)} />
+            </div>
+          </div>
+          
           <div>
-            <label className="mb-1 block text-sm font-medium">Хобби</label>
-            <input
-              className="w-full rounded-xl border px-3 py-2"
-              value={form.hobbies}
-              onChange={(e) => handleChange("hobbies", e.target.value)}
-            />
+            <label className={labelClass}>Хобби</label>
+            <input className={inputClass} value={form.hobbies} onChange={e => handleChange("hobbies", e.target.value)} placeholder="Через запятую..." />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium">О себе</label>
-            <textarea
-              className="w-full rounded-xl border px-3 py-2"
-              rows={4}
-              value={form.about_me}
-              onChange={(e) => handleChange("about_me", e.target.value)}
-            />
-            {errors.about_me && <p className="mt-1 text-xs text-red-500">{errors.about_me}</p>}
+            <label className={labelClass}>О себе</label>
+            <textarea className={`${inputClass} min-h-[100px] resize-none`} value={form.about_me} onChange={e => handleChange("about_me", e.target.value)} />
           </div>
 
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={form.pets}
-              onChange={(e) => handleChange("pets", e.target.checked)}
-            />
-            Питомцы
-          </label>
-
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={form.smoking}
-              onChange={(e) => handleChange("smoking", e.target.checked)}
-            />
-            Курение
-          </label>
-        </div>
-
-        {errors.general && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-            {errors.general}
+          {/* Toggles */}
+          <div className="flex gap-6 pt-2">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" className="hidden" checked={form.pets} onChange={e => handleChange("pets", e.target.checked)} />
+              <div className={`w-5 h-5 rounded border transition-all flex items-center justify-center ${form.pets ? 'bg-blue-600 border-blue-600' : 'border-gray-300 dark:border-gray-700'}`}>
+                {form.pets && <CheckCircle2 size={12} className="text-white" />}
+              </div>
+              <span className="text-sm dark:text-gray-300">Питомцы</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" className="hidden" checked={form.smoking} onChange={e => handleChange("smoking", e.target.checked)} />
+              <div className={`w-5 h-5 rounded border transition-all flex items-center justify-center ${form.smoking ? 'bg-blue-600 border-blue-600' : 'border-gray-300 dark:border-gray-700'}`}>
+                {form.smoking && <CheckCircle2 size={12} className="text-white" />}
+              </div>
+              <span className="text-sm dark:text-gray-300">Курение</span>
+            </label>
           </div>
-        )}
+        </section>
+      </div>
 
-        <div className="flex gap-3">
-          <button
-            className="rounded-xl bg-emerald-600 px-4 py-2 text-white disabled:opacity-60"
-            disabled={saving || !isChanged}
-            onClick={handleSubmit}
-          >
-            {saving ? "Сохранение..." : "Сохранить"}
-          </button>
-
-          <button className="rounded-xl border px-4 py-2" onClick={onCancel} disabled={saving}>
-            Отмена
-          </button>
-        </div>
+      {/* Footer */}
+      <div className="px-6 py-5 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end gap-3 bg-gray-50/30 dark:bg-[#1a1d26]/30">
+        <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors">
+          Отмена
+        </button>
+        <button
+          onClick={handleSubmit}
+          disabled={saving || !isChanged}
+          className={`flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-semibold transition-all ${
+            isChanged 
+            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 active:scale-95' 
+            : 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
+          }`}
+        >
+          {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save size={16} />}
+          {saving ? "Сохранение..." : "Сохранить"}
+        </button>
       </div>
     </div>
   );

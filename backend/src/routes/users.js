@@ -28,4 +28,15 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+// get all profiles
+router.get("/all", async (req, res) => {
+  try {
+    const result = await query("select id, full_name, age, avatar_url from profiles;");
+    res.json({ profiles: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch profiles" });
+  }
+});
+
 export default router;
