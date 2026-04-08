@@ -74,7 +74,9 @@ function HousingCard({
       : "Цена не указана";
 
   const location =
-    listing?.address || listing?.city || "Локация не указана";
+    listing?.address ||
+    listing?.city_ref?.name ||
+    "Локация не указана";
 
   const rentType =
     listing?.rent_type === "daily"

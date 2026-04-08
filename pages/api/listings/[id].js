@@ -9,7 +9,10 @@ export default async function handler(req, res) {
     try {
       const { data, error } = await supabase
         .from("listings")
-        .select("*")
+        .select(`
+          *,
+          city_ref:cities(id, name)
+        `)
         .eq("id", id)
         .single();
 

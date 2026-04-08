@@ -52,13 +52,15 @@ export type Profile = {
   age?: number | null;
 
   // study
-  university?: string | null;
+  university_id?: string | null;
+  university?: { id: string; name: string; city_id?: string | null } | null;
   faculty?: string | null;
   course?: number | null;
   study_type?: string | null;
 
   // location / preferences
-  city?: string | null;
+  city_id?: string | null;
+  city?: { id: string; name: string } | null;
   status?: string | null; // 'searching' etc
 
   budget?: number | null; // если у тебя реально есть одно поле budget
@@ -93,7 +95,8 @@ export type Listing = {
   title?: string | null;
   price?: number | null;
   description?: string | null;
-  city?: string | null;
+  city_id?: string | null;
+  city?: { id: string; name: string } | null;
   bedrooms?: number | null;
   images?: string[] | null;
   created_at?: string | null;
@@ -291,7 +294,7 @@ function ProfileHeader({ profile, isOwner }: any) {
           <div className="space-y-2">
             <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
               <span className="px-4 py-1.5 bg-indigo-500 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg shadow-indigo-500/20">
-                {profile.university ? "Студент" : "Пользователь"}
+                {profile.university?.name ? "Студент" : "Пользователь"}
               </span>
 
               {isVerified && (
@@ -326,7 +329,7 @@ function ProfileHeader({ profile, isOwner }: any) {
               </span>
               <span className="text-sm font-bold text-slate-700 dark:text-white flex items-center gap-2">
                 <MapPin size={16} className="text-indigo-500" />{" "}
-                {profile.city || "Казахстан"}
+                {profile.city?.name || "Казахстан"}
               </span>
             </div>
 
@@ -336,7 +339,7 @@ function ProfileHeader({ profile, isOwner }: any) {
               </span>
               <span className="text-sm font-bold text-slate-700 dark:text-white flex items-center gap-2">
                 <GraduationCap size={16} className="text-indigo-500" />{" "}
-                {profile.university || "Не указан"}
+                {profile.university?.name || "Не указан"}
               </span>
             </div>
           </div>
@@ -395,12 +398,12 @@ function AboutCard({ profile }: any) {
         />
         <InfoBlock
           label="Город"
-          value={profile?.city || "Алматы"}
+          value={profile?.city?.name || "Алматы"}
           icon={<MapPin size={16} className="text-indigo-500" />}
         />
         <InfoBlock
           label="Университет"
-          value={profile?.university || "—"}
+          value={profile?.university?.name || "—"}
           icon={<GraduationCap size={16} className="text-indigo-500" />}
         />
       </div>

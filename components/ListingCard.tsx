@@ -54,7 +54,7 @@ export default function ListingCard({
   const locationText =
     profile?.preferred_location ||
     actualListing?.address ||
-    profile?.city ||
+    profile?.city?.name ||
     "Локация не указана";
 
   const situationLabel = getSituationLabel(profile?.status);
@@ -120,7 +120,7 @@ export default function ListingCard({
                   isUniMatch ? "text-indigo-500" : "text-slate-400"
                 }`}
               >
-                {profile?.university || "ВУЗ не указан"}
+                {profile?.university?.name || "ВУЗ не указан"}
               </p>
             </div>
           </div>

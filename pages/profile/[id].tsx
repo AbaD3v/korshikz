@@ -32,8 +32,10 @@ export interface ProfilePublicData {
   hobbies: string | null;
   pets: boolean | null;
   smoking: boolean | null;
-  university: string | null;
-  city: string | null;
+  university_id: string | null;
+  city_id: string | null;
+  university: { id: string; name: string; city_id?: string | null } | null;
+  city: { id: string; name: string } | null;
   faculty: string | null;
   study_type: string | null;
   about_me: string | null;
@@ -396,7 +398,11 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
 
   const { data: profile } = await supabaseServer
     .from("profiles")
-    .select("*")
+    .select(`
+      *,
+      city:cities(id, name),
+      university:universities(id, name, city_id)
+    `)
     .eq("id", id)
     .maybeSingle();
 
@@ -405,7 +411,10 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   if (profile) {
     const { data } = await supabaseServer
       .from("listings")
-      .select("*")
+      .select(`
+        *,
+        city_ref:cities(id, name)
+      `)
       .eq("user_id", id)
       .order("created_at", { ascending: false });
 

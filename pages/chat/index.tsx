@@ -17,7 +17,7 @@ interface Profile {
   id: string;
   full_name: string | null;
   avatar_url: string | null;
-  university?: string | null;
+  university?: { id: string; name: string } | null;
   is_verified?: boolean | null;
 }
 
@@ -33,6 +33,11 @@ interface DirectDialogItem {
   university?: string | null;
   is_verified?: boolean;
 }
+
+const pickRelation = <T,>(value: T | T[] | null | undefined): T | null => {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+};
 
 interface GroupDialogItem {
   id: string;
@@ -119,7 +124,7 @@ export default function ChatList() {
 
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("id, full_name, avatar_url, university, is_verified")
+        .select("id, full_name, avatar_url, is_verified, university:universities(id, name)")
         .in("id", ids);
 
       if (profilesError) {
@@ -138,6 +143,7 @@ export default function ChatList() {
 
       return ids.map((uid) => {
         const prof = profiles?.find((p) => p.id === uid);
+        const university = pickRelation(prof?.university);
         const dialog = dialogMap.get(uid);
         const unreadCount =
           unreadMessages?.filter((m) => m.sender_id === uid).length ?? 0;
@@ -155,7 +161,7 @@ export default function ChatList() {
           lastMessage: prefixedLastMessage,
           lastTime: dialog?.lastTime ?? null,
           unread: unreadCount,
-          university: prof?.university ?? null,
+          university: university?.name ?? null,
           is_verified: Boolean(prof?.is_verified),
         };
       });

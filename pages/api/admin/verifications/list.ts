@@ -30,8 +30,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           id,
           full_name,
           username,
-          university,
-          city,
+          university_id,
+          city_id,
+          university:universities (
+            id,
+            name
+          ),
+          city:cities (
+            id,
+            name
+          ),
           is_verified,
           verification_status,
           avatar_url

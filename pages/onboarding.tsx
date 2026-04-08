@@ -1,6 +1,7 @@
+// src/pages/onboarding.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -22,6 +23,10 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  useLocationOptions,
+} from "@/hooks/useLocationOptions";
+import { normalizeProfileLocation } from "@/lib/normalizeProfileLocation";
 
 const STEPS = [
   { id: 1, title: "Личность", icon: User },
@@ -39,6 +44,56 @@ const STATUS_MAP: Record<number, string> = {
   4: "inactive",
 };
 
+interface ProfileRow {
+  id: string;
+  full_name: string | null;
+  age: number | null;
+  city_id: string | null;
+  university_id: string | null;
+  status: string | null;
+  budget: number | null;
+  cleanliness_level: number | null;
+  noise_tolerance: number | null;
+  schedule_type: string | null;
+  faculty: string | null;
+  study_type: string | null;
+  preferred_location: string | null;
+  preferred_gender: string | null;
+  preferred_age_min: number | null;
+  preferred_age_max: number | null;
+  preferred_pets: boolean | null;
+  preferred_smoking: boolean | null;
+  about_me: string | null;
+  isOnboarded: boolean | null;
+  phone: string | null;
+  avatar_url: string | null;
+  is_verified?: boolean | null;
+}
+
+interface FormState {
+  full_name: string;
+  age: string;
+  university_id: string;
+  city_id: string;
+  status: number;
+  budget: string;
+  cleanliness_level: number | string;
+  noise_tolerance: number | string;
+  schedule_type: string;
+  faculty: string;
+  study_type: string;
+  preferred_location: string;
+  preferred_gender: string;
+  preferred_age_min: string;
+  preferred_age_max: string;
+  preferred_pets: boolean;
+  preferred_smoking: boolean;
+  about_me: string;
+  isOnboarded: boolean;
+  phone: string;
+  avatar_url?: string | null;
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -51,13 +106,20 @@ export default function OnboardingPage() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
 
-  const [form, setForm] = useState<any>({
+  const {
+    cities,
+    universities,
+    loading: loadingOptions,
+    error: locationOptionsError,
+  } = useLocationOptions();
+
+  const [form, setForm] = useState<FormState>({
     full_name: "",
-    age: 20,
-    university: "",
-    city: "Алматы",
+    age: "20",
+    university_id: "",
+    city_id: "",
     status: 1,
-    budget: 120000,
+    budget: "120000",
     cleanliness_level: 3,
     noise_tolerance: 3,
     schedule_type: "flexible",
@@ -65,70 +127,122 @@ export default function OnboardingPage() {
     study_type: "",
     preferred_location: "",
     preferred_gender: "any",
-    preferred_age_min: 18,
-    preferred_age_max: 25,
+    preferred_age_min: "18",
+    preferred_age_max: "25",
     preferred_pets: false,
     preferred_smoking: false,
     about_me: "",
     isOnboarded: false,
     phone: "",
+    avatar_url: null,
   });
 
   useEffect(() => {
     setMounted(true);
 
     async function init() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
-
-      setUserId(user.id);
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (profile) {
-        if (profile.isOnboarded) {
-          router.replace(
-            `/profile/${user.id}${profile.is_verified ? "" : "?verify=1"}`
-          );
+        if (!user) {
+          router.replace("/login");
           return;
         }
 
-        const numericStatus = Object.keys(STATUS_MAP).find(
-          (key) => STATUS_MAP[Number(key)] === profile.status
-        );
+        setUserId(user.id);
 
-        setForm((prev: any) => ({
-          ...prev,
-          ...profile,
-          status: numericStatus ? Number(numericStatus) : prev.status,
-        }));
+        const profileRes = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .maybeSingle();
 
-        if (profile.avatar_url) {
-          setAvatarPreview(profile.avatar_url);
+        const profile = profileRes.data as ProfileRow | null;
+
+        if (profile) {
+          if (profile.isOnboarded) {
+            router.replace(
+              `/profile/${user.id}${profile.is_verified ? "" : "?verify=1"}`
+            );
+            return;
+          }
+
+          const numericStatus = Object.keys(STATUS_MAP).find(
+            (key) => STATUS_MAP[Number(key)] === profile.status
+          );
+
+          setForm((prev) => ({
+            ...prev,
+            full_name: profile.full_name ?? prev.full_name,
+            age: profile.age ? String(profile.age) : prev.age,
+            university_id: profile.university_id ?? "",
+            city_id: profile.city_id ?? "",
+            status: numericStatus ? Number(numericStatus) : prev.status,
+            budget: profile.budget ? String(profile.budget) : prev.budget,
+            cleanliness_level:
+              profile.cleanliness_level ?? prev.cleanliness_level,
+            noise_tolerance: profile.noise_tolerance ?? prev.noise_tolerance,
+            schedule_type: profile.schedule_type ?? prev.schedule_type,
+            faculty: profile.faculty ?? prev.faculty,
+            study_type: profile.study_type ?? prev.study_type,
+            preferred_location:
+              profile.preferred_location ?? prev.preferred_location,
+            preferred_gender: profile.preferred_gender ?? prev.preferred_gender,
+            preferred_age_min: profile.preferred_age_min
+              ? String(profile.preferred_age_min)
+              : prev.preferred_age_min,
+            preferred_age_max: profile.preferred_age_max
+              ? String(profile.preferred_age_max)
+              : prev.preferred_age_max,
+            preferred_pets: Boolean(profile.preferred_pets),
+            preferred_smoking: Boolean(profile.preferred_smoking),
+            about_me: profile.about_me ?? prev.about_me,
+            isOnboarded: Boolean(profile.isOnboarded),
+            phone: profile.phone ?? prev.phone,
+            avatar_url: profile.avatar_url ?? null,
+          }));
+
+          if (profile.avatar_url) {
+            setAvatarPreview(profile.avatar_url);
+          }
         }
+      } catch (err) {
+        console.error("Init error:", err);
+        alert("Не удалось загрузить онбординг");
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     }
 
     init();
   }, [router]);
 
+  useEffect(() => {
+    if (!locationOptionsError) return;
+    alert(locationOptionsError);
+  }, [locationOptionsError]);
+
+  const filteredUniversities = useMemo(() => {
+    if (!form.city_id) return [];
+    return universities.filter((u) => u.city_id === form.city_id);
+  }, [universities, form.city_id]);
+
+  const selectedUniversity = useMemo(() => {
+    return universities.find((u) => u.id === form.university_id) ?? null;
+  }, [universities, form.university_id]);
+
   const handleNext = async () => {
     const isLast = step === STEPS.length;
 
-    if (step === 1 && (!form.university || !form.full_name)) {
+    if (step === 1 && (!form.full_name || !form.university_id)) {
       alert("Укажи имя и университет — это важно для мэтчинга!");
+      return;
+    }
+
+    if (step === 4 && !form.city_id) {
+      alert("Выбери город");
       return;
     }
 
@@ -147,7 +261,7 @@ export default function OnboardingPage() {
       let finalAvatarUrl = form.avatar_url || null;
 
       if (avatarFile) {
-        const fileExt = avatarFile.name.split(".").pop();
+        const fileExt = avatarFile.name.split(".").pop() || "jpg";
         const fileName = `${userId}-${Date.now()}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
@@ -163,16 +277,39 @@ export default function OnboardingPage() {
         finalAvatarUrl = publicUrlData.publicUrl;
       }
 
+      const normalizedLocation = await normalizeProfileLocation({
+        cityId: form.city_id,
+        universityId: form.university_id,
+      });
+
+
       const finalPayload = {
-        ...form,
         id: userId,
+        full_name: form.full_name.trim() || null,
+        age: form.age ? Number(form.age) : null,
+        university_id: normalizedLocation.university_id,
+        city_id: normalizedLocation.city_id,
         avatar_url: finalAvatarUrl,
         isOnboarded: true,
         status: STATUS_MAP[form.status] || "searching",
         budget: Number(form.budget),
-        age: form.age ? Number(form.age) : null,
         cleanliness_level: Number(form.cleanliness_level),
         noise_tolerance: Number(form.noise_tolerance),
+        schedule_type: form.schedule_type,
+        faculty: form.faculty.trim() || null,
+        study_type: form.study_type.trim() || null,
+        preferred_location: form.preferred_location.trim() || null,
+        preferred_gender: form.preferred_gender,
+        preferred_age_min: form.preferred_age_min
+          ? Number(form.preferred_age_min)
+          : null,
+        preferred_age_max: form.preferred_age_max
+          ? Number(form.preferred_age_max)
+          : null,
+        preferred_pets: form.preferred_pets,
+        preferred_smoking: form.preferred_smoking,
+        about_me: form.about_me.trim() || null,
+        phone: form.phone.trim() || null,
       };
 
       const { error } = await supabase.from("profiles").upsert(finalPayload);
@@ -296,21 +433,70 @@ export default function OnboardingPage() {
                       />
                     </InputGroup>
 
-                    <InputGroup label="Твой Университет">
+                    <InputGroup label="Город">
+                      <select
+                        value={form.city_id}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            city_id: e.target.value,
+                            university_id:
+                              selectedUniversity &&
+                              selectedUniversity.city_id === e.target.value
+                                ? form.university_id
+                                : "",
+                          })
+                        }
+                        className="premium-input bg-white dark:bg-slate-900"
+                        disabled={loadingOptions}
+                      >
+                        <option value="">
+                          {loadingOptions ? "Загрузка..." : "Выберите город"}
+                        </option>
+                        {cities.map((city) => (
+                          <option key={city.id} value={city.id}>
+                            {city.name}
+                          </option>
+                        ))}
+                      </select>
+                    </InputGroup>
+
+                    <InputGroup label="Твой университет">
                       <div className="relative flex items-center">
                         <GraduationCap
                           className="absolute left-5 text-indigo-500 pointer-events-none z-10"
                           size={20}
                         />
-                        <input
-                          value={form.university}
-                          onChange={(e) =>
-                            setForm({ ...form, university: e.target.value })
-                          }
-                          placeholder="Напр: AIU"
+                        <select
+                          value={form.university_id}
+                          onChange={(e) => {
+                            const selected = universities.find(
+                              (u) => u.id === e.target.value
+                            );
+
+                            setForm({
+                              ...form,
+                              university_id: e.target.value,
+                              city_id: selected?.city_id ?? form.city_id,
+                            });
+                          }}
+                          disabled={loadingOptions || !form.city_id}
                           style={{ paddingLeft: "3.5rem" }}
-                          className="premium-input w-full"
-                        />
+                          className="premium-input w-full bg-white dark:bg-slate-900"
+                        >
+                          <option value="">
+                            {loadingOptions
+                              ? "Загрузка..."
+                              : form.city_id
+                              ? "Выберите университет"
+                              : "Сначала выберите город"}
+                          </option>
+                          {filteredUniversities.map((university) => (
+                            <option key={university.id} value={university.id}>
+                              {university.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </InputGroup>
                   </div>
@@ -473,14 +659,26 @@ export default function OnboardingPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <InputGroup label="Город">
                       <select
-                        value={form.city}
+                        value={form.city_id}
                         onChange={(e) =>
-                          setForm({ ...form, city: e.target.value })
+                          setForm({
+                            ...form,
+                            city_id: e.target.value,
+                            university_id:
+                              selectedUniversity &&
+                              selectedUniversity.city_id === e.target.value
+                                ? form.university_id
+                                : "",
+                          })
                         }
                         className="premium-input bg-white dark:bg-slate-900"
                       >
-                        <option value="Алматы">Алматы</option>
-                        <option value="Астана">Астана</option>
+                        <option value="">Выберите город</option>
+                        {cities.map((city) => (
+                          <option key={city.id} value={city.id}>
+                            {city.name}
+                          </option>
+                        ))}
                       </select>
                     </InputGroup>
 
@@ -624,7 +822,7 @@ export default function OnboardingPage() {
 
           <button
             onClick={handleNext}
-            disabled={saving}
+            disabled={saving || loadingOptions}
             className="px-10 py-5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-full font-black uppercase text-xs tracking-widest shadow-xl hover:scale-105 transition-all active:scale-95"
           >
             {saving ? "Сохраняем..." : step === 6 ? "Завершить" : "Далее"}
@@ -791,9 +989,7 @@ function ToggleItem({
         <div className="flex flex-col">
           <span
             className={`text-[10px] font-black uppercase tracking-tight ${
-              active
-                ? "text-slate-900 dark:text-white"
-                : "text-slate-500"
+              active ? "text-slate-900 dark:text-white" : "text-slate-500"
             }`}
           >
             {label}
