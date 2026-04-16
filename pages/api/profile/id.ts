@@ -12,7 +12,16 @@ export default async function handler(req, res) {
   try {
     const { data: profile, error: pErr } = await supabase
       .from("profiles")
-      .select("id, username, email, avatar_url")
+      .select(`
+        id,
+        username,
+        email,
+        avatar_url,
+        city_id,
+        university_id,
+        city:cities(id, name),
+        university:universities(id, name, city_id)
+      `)
       .eq("id", id)
       .maybeSingle();
 
@@ -20,7 +29,10 @@ export default async function handler(req, res) {
 
     const { data: listings, error: lErr } = await supabase
       .from("listings")
-      .select("*")
+      .select(`
+        *,
+        city_ref:cities(id, name)
+      `)
       .eq("user_id", id)
       .order("id", { ascending: false });
 

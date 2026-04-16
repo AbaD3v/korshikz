@@ -20,8 +20,8 @@ type ProfileMini = {
   id: string;
   full_name?: string | null;
   username?: string | null;
-  university?: string | null;
-  city?: string | null;
+  university?: { id: string; name: string } | null;
+  city?: { id: string; name: string } | null;
   is_verified?: boolean | null;
   verification_status?: string | null;
   avatar_url?: string | null;
@@ -152,8 +152,8 @@ export default function AdminVerificationsPage() {
   it.ocr_text_preview ?? "",
   p?.full_name ?? "",
   p?.username ?? "",
-  p?.university ?? "",
-  p?.city ?? "",
+  p?.university?.name ?? "",
+  p?.city?.name ?? "",
 ]
   .join(" ")
   .toLowerCase();
@@ -231,7 +231,9 @@ export default function AdminVerificationsPage() {
 
       const p = it.profiles;
       const title = p?.full_name || p?.username || it.user_id;
-      const subtitle = p?.university ? `${p.university}${p.city ? ` • ${p.city}` : ""}` : p?.city || undefined;
+      const subtitle = p?.university?.name
+        ? `${p.university.name}${p.city?.name ? ` • ${p.city.name}` : ""}`
+        : p?.city?.name || undefined;
 
       setPreviewMeta({ title, subtitle });
       setPreviewUrl(j.signedUrl);
@@ -297,9 +299,9 @@ export default function AdminVerificationsPage() {
 
             const p = it.profiles;
             const displayName = p?.full_name || p?.username || it.user_id;
-            const subtitle = p?.university
-              ? `${p.university}${p.city ? ` • ${p.city}` : ""}`
-              : p?.city || "";
+            const subtitle = p?.university?.name
+              ? `${p.university.name}${p.city?.name ? ` • ${p.city.name}` : ""}`
+              : p?.city?.name || "";
 
             return (
               <div

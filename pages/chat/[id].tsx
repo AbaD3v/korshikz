@@ -32,8 +32,13 @@ type OtherProfile = {
   id: string;
   full_name: string | null;
   avatar_url: string | null;
-  university?: string | null;
+  university?: { id: string; name: string } | null;
   is_verified?: boolean | null;
+};
+
+const pickRelation = <T,>(value: T | T[] | null | undefined): T | null => {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
 };
 
 const newUUID = () => {
@@ -249,7 +254,7 @@ const [relatedConversationIds, setRelatedConversationIds] = useState<string[]>([
     (async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, avatar_url, university, is_verified")
+        .select("id, full_name, avatar_url, is_verified, university:universities(id, name)")
         .eq("id", otherUserId)
         .maybeSingle();
 
@@ -260,7 +265,14 @@ const [relatedConversationIds, setRelatedConversationIds] = useState<string[]>([
         return;
       }
 
-      setOtherUser((data as OtherProfile) || null);
+      setOtherUser(
+        data
+          ? ({
+              ...(data as any),
+              university: pickRelation((data as any).university),
+            } as OtherProfile)
+          : null
+      );
     })();
 
     return () => {
@@ -433,7 +445,7 @@ const [relatedConversationIds, setRelatedConversationIds] = useState<string[]>([
 
   const renderStatus = () => {
     if (typingUser) return "набирает сообщение...";
-    if (otherUser?.university) return otherUser.university;
+    if (otherUser?.university?.name) return otherUser.university.name;
     return "Студент";
   };
 
@@ -475,7 +487,7 @@ const [relatedConversationIds, setRelatedConversationIds] = useState<string[]>([
               </div>
 
               <div className="flex items-center gap-1.5 min-w-0">
-                {otherUser?.university && !typingUser && (
+                {otherUser?.university?.name && !typingUser && (
                   <GraduationCap
                     size={12}
                     className="text-indigo-500 shrink-0"

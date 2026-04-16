@@ -80,7 +80,10 @@ export default function ListingDetail() {
       try {
         const { data: listingData, error: lErr } = await supabase
           .from("listings")
-          .select("*")
+          .select(`
+            *,
+            city_ref:cities(id, name)
+          `)
           .eq("id", realId)
           .single();
 
@@ -96,7 +99,11 @@ export default function ListingDetail() {
         if (listingData.user_id) {
           const { data: profileData, error: pErr } = await supabase
             .from("profiles")
-            .select("*")
+            .select(`
+              *,
+              city:cities(id, name),
+              university:universities(id, name, city_id)
+            `)
             .eq("id", listingData.user_id)
             .single();
 
@@ -296,7 +303,7 @@ export default function ListingDetail() {
                     </div>
 
                     <div className="text-indigo-500 font-bold mt-1 uppercase text-xs tracking-wider">
-                      {owner?.university || "Студент"}
+                      {owner?.university?.name || "Студент"}
                     </div>
 
                     {(owner?.faculty || owner?.study_type) && (
@@ -384,7 +391,7 @@ export default function ListingDetail() {
                   <SpecCard
                     icon={<MapPin size={18} className="text-indigo-500" />}
                     label="Город"
-                    value={listing.city || owner?.city || "—"}
+                    value={listing.city_ref?.name || owner?.city?.name || "—"}
                   />
                   <SpecCard
                     icon={<Wallet size={18} className="text-indigo-500" />}
@@ -587,3 +594,4 @@ function LifestyleTag({
     </div>
   );
 }
+

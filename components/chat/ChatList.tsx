@@ -25,8 +25,13 @@ type ProfileMini = {
   id: string;
   full_name: string | null;
   avatar_url: string | null;
-  university?: string | null;
+  university?: { id: string; name: string } | null;
   is_verified?: boolean | null;
+};
+
+const pickRelation = <T,>(value: T | T[] | null | undefined): T | null => {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
 };
 
 type DialogItem = {
@@ -159,13 +164,16 @@ export default function ChatList() {
       if (otherUserIds.length > 0) {
         const { data: profilesData, error: profErr } = await supabase
           .from("profiles")
-          .select("id, full_name, avatar_url, university, is_verified")
+          .select("id, full_name, avatar_url, is_verified, university:universities(id, name)")
           .in("id", otherUserIds);
 
         if (profErr) {
           console.error("Profiles fetch error:", profErr);
         } else {
-          profiles = (profilesData || []) as ProfileMini[];
+          profiles = ((profilesData || []) as any[]).map((profile) => ({
+            ...profile,
+            university: pickRelation(profile.university),
+          })) as ProfileMini[];
         }
       }
 
@@ -177,7 +185,7 @@ export default function ChatList() {
           const otherName =
             prof?.full_name || `Пользователь ${c.other_user.slice(0, 6)}`;
           const otherAvatar = prof?.avatar_url || null;
-          const otherUniversity = prof?.university || null;
+          const otherUniversity = prof?.university?.name || null;
           const otherVerified = Boolean(prof?.is_verified);
 
           const preview =
