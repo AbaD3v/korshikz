@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/router";
@@ -29,38 +29,46 @@ type HeaderProps = {
   setCity?: (c: string) => void;
 };
 
+type AuthState = {
+  user: any | null;
+  profile: any | null;
+  loading: boolean;
+};
+
 const CITY_OPTIONS = ["Алматы", "Астана", "Шымкент", "Караганда"];
 
-function useAuthProfile(
-  setUser: (u: any) => void,
-  setProfile: (p: any) => void,
-  router: any
-) {
-  useEffect(() => {
-    let mounted = true;
+const AUTH_EXCLUSION_PAGES = [
+  "/auth/update-password",
+  "/auth/confirm",
+  "/auth/forgot-password",
+  "/auth/login",
+  "/auth/register",
+];
 
-    const authExclusionPages = [
-      "/auth/update-password",
-      "/auth/confirm",
-      "/auth/forgot-password",
-      "/auth/login",
-      "/auth/register",
-    ];
+export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
+  const [open, setOpen] = useState(false);
+  // Объединяем user + profile в один state, чтобы они всегда обновлялись атомарно
+  const [authState, setAuthState] = useState<AuthState>({
+    user: null,
+    profile: null,
+    loading: true,
+  });
 
-    const isExcluded = authExclusionPages.some((page) =>
-      router.pathname.startsWith(page)
-    );
+  const router = useRouter();
+  const { unreadChatCount } = useUnreadChatCount();
+  // Ref для отмены outdated async вызовов (race condition fix)
+  const mountedRef = useRef(true);
 
-    const loadProfile = async (authUser: any) => {
+  const { user, profile, loading } = authState;
+
+  const loadProfile = useCallback(
+    async (authUser: any) => {
       if (!authUser) {
-        if (mounted) {
-          setUser(null);
-          setProfile(null);
+        if (mountedRef.current) {
+          setAuthState({ user: null, profile: null, loading: false });
         }
         return;
       }
-
-      if (mounted) setUser(authUser);
 
       const { data: existingProfile, error: profileError } = await supabase
         .from("profiles")
@@ -68,8 +76,11 @@ function useAuthProfile(
         .eq("id", authUser.id)
         .maybeSingle();
 
+      if (!mountedRef.current) return;
+
       if (profileError) {
         console.warn("Profile fetch error:", profileError);
+        setAuthState({ user: authUser, profile: null, loading: false });
         return;
       }
 
@@ -84,17 +95,26 @@ function useAuthProfile(
           .select("id, username, avatar_url, isOnboarded")
           .maybeSingle();
 
+        if (!mountedRef.current) return;
+
         if (createError) {
           console.warn("Profile create error:", createError);
+          setAuthState({ user: authUser, profile: null, loading: false });
           return;
         }
 
         finalProfile = createdProfile;
       }
 
-      if (mounted) {
-        setProfile(finalProfile ?? null);
+      // Атомарное обновление — user и profile устанавливаются вместе
+      if (mountedRef.current) {
+        setAuthState({ user: authUser, profile: finalProfile ?? null, loading: false });
       }
+
+      // Редирект на онбординг если нужно
+      const isExcluded = AUTH_EXCLUSION_PAGES.some((page) =>
+        router.pathname.startsWith(page)
+      );
 
       if (
         finalProfile?.isOnboarded === false &&
@@ -103,50 +123,46 @@ function useAuthProfile(
       ) {
         router.replace("/onboarding");
       }
-    };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [router.pathname]
+  );
 
-    const fetchUser = async () => {
-      try {
-        const { data } = await supabase.auth.getUser();
-        await loadProfile(data?.user || null);
-      } catch (err) {
-        console.warn("Auth fetch error:", err);
+  useEffect(() => {
+    mountedRef.current = true;
+
+    // Первоначальная загрузка
+    supabase.auth.getUser().then(({ data }) => {
+      if (mountedRef.current) {
+        loadProfile(data?.user ?? null);
       }
-    };
+    });
 
-    fetchUser();
-
+    // Подписка на изменения сессии
     const { data: listener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        await loadProfile(session?.user || null);
+      (_event, session) => {
+        if (mountedRef.current) {
+          loadProfile(session?.user ?? null);
+        }
       }
     );
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
       listener.subscription.unsubscribe();
     };
-  }, [router.pathname, router, setProfile, setUser]);
-}
+  }, [loadProfile]);
 
-export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
-  const [open, setOpen] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
-  const router = useRouter();
-  const { unreadChatCount } = useUnreadChatCount();
-
-  useAuthProfile(setUser, setProfile, router);
-
+  // Синхронизация города из URL
   useEffect(() => {
     if (!router.isReady) return;
-
     const cityFromUrl = router.query.city as string;
     if (cityFromUrl && cityFromUrl.toLowerCase() !== city.toLowerCase()) {
       setCity?.(cityFromUrl);
     }
   }, [router.isReady, router.query.city, city, setCity]);
 
+  // Закрываем меню при навигации
   useEffect(() => {
     setOpen(false);
   }, [router.asPath]);
@@ -154,13 +170,9 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
   const handleCityChange = useCallback(
     (newCity: string) => {
       setCity?.(newCity);
-
       if (router.pathname.startsWith("/listings")) {
         router.push(
-          {
-            pathname: router.pathname,
-            query: { ...router.query, city: newCity },
-          },
+          { pathname: router.pathname, query: { ...router.query, city: newCity } },
           undefined,
           { shallow: false }
         );
@@ -173,8 +185,9 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
     try {
       await supabase.auth.signOut();
     } finally {
-      setUser(null);
-      setProfile(null);
+      if (mountedRef.current) {
+        setAuthState({ user: null, profile: null, loading: false });
+      }
       setOpen(false);
       router.push("/");
     }
@@ -244,7 +257,8 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
         </nav>
 
         <div className="flex items-center gap-1 sm:gap-2">
-          {user && (
+          {/* Скрываем кнопки пока загружается — избегаем мерцания */}
+          {!loading && user && (
             <Link
               href="/create"
               className="hidden md:flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black transition-all shadow-lg shadow-indigo-500/20 active:scale-95 uppercase tracking-widest mr-2"
@@ -265,7 +279,10 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
             )}
           </button>
 
-          {user ? (
+          {loading ? (
+            // Placeholder во время загрузки — предотвращает layout shift
+            <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+          ) : user ? (
             <div className="flex items-center gap-1 sm:gap-2">
               <NotificationsBell />
 
