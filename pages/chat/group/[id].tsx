@@ -10,6 +10,11 @@ import {
   MoreHorizontal,
   User,
   ShieldCheck,
+  X,
+  Crown,
+  Shield,
+  Trash2,
+  UserPlus,
 } from "lucide-react";
 
 interface Profile {
@@ -17,6 +22,7 @@ interface Profile {
   full_name: string | null;
   avatar_url: string | null;
   is_verified?: boolean | null;
+  username?: string | null;
 }
 
 interface GroupMessage {
@@ -31,6 +37,191 @@ interface GroupChat {
   id: string;
   title: string | null;
   avatar_url?: string | null;
+  description?: string | null;
+  created_by?: string | null;
+}
+
+type MemberRole = "owner" | "admin" | "member";
+
+interface MemberProfile {
+  id: string;
+  full_name: string | null;
+  username?: string | null;
+  avatar_url: string | null;
+}
+
+interface GroupMember {
+  id: string;
+  group_chat_id: string;
+  user_id: string;
+  role: MemberRole;
+  joined_at: string;
+  added_by?: string | null;
+  profiles: MemberProfile | null;
+}
+
+const roleLabelMap: Record<MemberRole, string> = {
+  owner: "Владелец",
+  admin: "Админ",
+  member: "Участник",
+};
+
+const roleIconMap: Record<MemberRole, React.ReactNode> = {
+  owner: <Crown size={14} className="text-amber-500" />,
+  admin: <Shield size={14} className="text-indigo-500" />,
+  member: <Users size={14} className="text-gray-400" />,
+};
+
+interface GroupChatInfoDrawerProps {
+  open: boolean;
+  onClose: () => void;
+  groupTitle: string;
+  members: GroupMember[];
+  currentUserId: string;
+  onRemoveMember: (userId: string) => void;
+  onAddMember: () => void;
+}
+
+function GroupChatInfoDrawer({
+  open,
+  onClose,
+  groupTitle,
+  members,
+  currentUserId,
+  onRemoveMember,
+  onAddMember,
+}: GroupChatInfoDrawerProps) {
+  if (!open) return null;
+
+  const currentMember = members.find((m) => m.user_id === currentUserId);
+  const currentRole = currentMember?.role;
+
+  const canAdd = currentRole === "owner" || currentRole === "admin";
+
+  const canRemoveMember = (target: GroupMember) => {
+    if (!currentRole) return false;
+    if (target.user_id === currentUserId) return false;
+
+    if (currentRole === "owner") {
+      return target.role === "admin" || target.role === "member";
+    }
+
+    if (currentRole === "admin") {
+      return target.role === "member";
+    }
+
+    return false;
+  };
+
+  const sortedMembers = [...members].sort((a, b) => {
+    const order = { owner: 0, admin: 1, member: 2 };
+    return order[a.role] - order[b.role];
+  });
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+        onClick={onClose}
+      />
+
+      <aside className="absolute right-0 top-0 h-full w-full max-w-md bg-white dark:bg-[#0f172a] border-l border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col">
+        <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100 dark:border-gray-800">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+              Информация о чате
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {groupTitle}
+            </p>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="px-4 py-4 border-b border-gray-100 dark:border-gray-800">
+          <h3 className="text-xl font-black text-gray-900 dark:text-white">
+            {groupTitle}
+          </h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {members.length} участников
+          </p>
+
+          {canAdd && (
+            <button
+              onClick={onAddMember}
+              className="mt-4 inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700"
+            >
+              <UserPlus size={16} />
+              Добавить участника
+            </button>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {sortedMembers.map((member) => {
+            const profile = member.profiles;
+            const name =
+              profile?.full_name || profile?.username || "Пользователь";
+
+            return (
+              <div
+                key={member.id}
+                className="flex items-center justify-between rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 shrink-0">
+                    {profile?.avatar_url ? (
+                      <Image
+                        src={profile.avatar_url}
+                        alt={name}
+                        width={44}
+                        height={44}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                        {name.slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <Link
+                      href={`/profile/${member.user_id}`}
+                      className="block text-sm font-bold text-gray-900 dark:text-white truncate hover:underline"
+                    >
+                      {name}
+                    </Link>
+
+                    <div className="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                      {roleIconMap[member.role]}
+                      <span>{roleLabelMap[member.role]}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {canRemoveMember(member) && (
+                  <button
+                    onClick={() => onRemoveMember(member.user_id)}
+                    className="p-2 rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
+                    title="Удалить участника"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </aside>
+    </div>
+  );
 }
 
 export default function GroupChatPage() {
@@ -43,9 +234,12 @@ export default function GroupChatPage() {
   const [input, setInput] = useState("");
   const [group, setGroup] = useState<GroupChat | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [isMember, setIsMember] = useState<boolean | null>(null);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [myRole, setMyRole] = useState<MemberRole | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -74,51 +268,82 @@ export default function GroupChatPage() {
     });
   }, []);
 
-  const loadMissingProfiles = useCallback(async (senderIds: string[]) => {
-    const uniqueIds = Array.from(new Set(senderIds.filter(Boolean)));
-    if (!uniqueIds.length) return;
+  const loadMissingProfiles = useCallback(
+    async (senderIds: string[]) => {
+      const uniqueIds = Array.from(new Set(senderIds.filter(Boolean)));
+      if (!uniqueIds.length) return;
 
-    const knownIds = new Set(profiles.map((p) => p.id));
-    const missingIds = uniqueIds.filter((id) => !knownIds.has(id));
-    if (!missingIds.length) return;
+      const knownIds = new Set(profiles.map((p) => p.id));
+      const missingIds = uniqueIds.filter((id) => !knownIds.has(id));
+      if (!missingIds.length) return;
 
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url, is_verified, username")
+        .in("id", missingIds);
+
+      if (error) {
+        console.error("Ошибка загрузки профилей:", error);
+        return;
+      }
+
+      setProfiles((prev) => {
+        const map = new Map(prev.map((p) => [p.id, p]));
+        for (const p of data || []) {
+          map.set(p.id, p as Profile);
+        }
+        return Array.from(map.values());
+      });
+    },
+    [profiles]
+  );
+
+  const loadMembers = useCallback(async (groupId: string, currentUserId: string) => {
     const { data, error } = await supabase
-      .from("profiles")
-      .select("id, full_name, avatar_url, is_verified")
-      .in("id", missingIds);
+      .from("group_chat_members")
+      .select(`
+        id,
+        group_chat_id,
+        user_id,
+        role,
+        joined_at,
+        added_by,
+        profiles!group_chat_members_user_id_fkey (
+          id,
+          full_name,
+          username,
+          avatar_url
+        )
+      `)
+      .eq("group_chat_id", groupId);
 
     if (error) {
-      console.error("Ошибка загрузки профилей:", error);
+      console.error("Ошибка загрузки участников:", error);
       return;
     }
 
-    setProfiles((prev) => {
-      const map = new Map(prev.map((p) => [p.id, p]));
-      for (const p of data || []) {
-        map.set(p.id, p as Profile);
-      }
-      return Array.from(map.values());
-    });
-  }, [profiles]);
+    const typedMembers = (data || []) as unknown as GroupMember[];
+    setMembers(typedMembers);
 
-  const markGroupRead = useCallback(
-    async (groupId: string, userId: string) => {
-      const payload = {
-        group_chat_id: groupId,
-        user_id: userId,
-        last_read_at: new Date().toISOString(),
-      };
+    const me = typedMembers.find((m) => m.user_id === currentUserId);
+    setMyRole(me?.role ?? null);
+  }, []);
 
-      const { error } = await supabase
-        .from("group_chat_reads")
-        .upsert(payload, { onConflict: "group_chat_id,user_id" });
+  const markGroupRead = useCallback(async (groupId: string, userId: string) => {
+    const payload = {
+      group_chat_id: groupId,
+      user_id: userId,
+      last_read_at: new Date().toISOString(),
+    };
 
-      if (error) {
-        console.error("Ошибка обновления group_chat_reads:", error);
-      }
-    },
-    []
-  );
+    const { error } = await supabase
+      .from("group_chat_reads")
+      .upsert(payload, { onConflict: "group_chat_id,user_id" });
+
+    if (error) {
+      console.error("Ошибка обновления group_chat_reads:", error);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -152,20 +377,22 @@ export default function GroupChatPage() {
       setLoading(true);
 
       try {
-        const [{ data: membership, error: membershipError }, { data: groupData, error: groupError }] =
-          await Promise.all([
-            supabase
-              .from("group_chat_members")
-              .select("group_chat_id")
-              .eq("group_chat_id", id)
-              .eq("user_id", user.id)
-              .maybeSingle(),
-            supabase
-              .from("group_chats")
-              .select("id, title, avatar_url")
-              .eq("id", id)
-              .maybeSingle(),
-          ]);
+        const [
+          { data: membership, error: membershipError },
+          { data: groupData, error: groupError },
+        ] = await Promise.all([
+          supabase
+            .from("group_chat_members")
+            .select("group_chat_id")
+            .eq("group_chat_id", id)
+            .eq("user_id", user.id)
+            .maybeSingle(),
+          supabase
+            .from("group_chats")
+            .select("id, title, avatar_url, description, created_by")
+            .eq("id", id)
+            .maybeSingle(),
+        ]);
 
         if (membershipError) {
           console.error("Ошибка проверки membership:", membershipError);
@@ -185,6 +412,8 @@ export default function GroupChatPage() {
           setLoading(false);
           return;
         }
+
+        await loadMembers(id, user.id);
 
         const { data: msgData, error: msgError } = await supabase
           .from("group_chat_messages")
@@ -219,7 +448,14 @@ export default function GroupChatPage() {
     return () => {
       active = false;
     };
-  }, [id, user?.id, loadMissingProfiles, markGroupRead, scrollDown]);
+  }, [
+    id,
+    user?.id,
+    loadMissingProfiles,
+    loadMembers,
+    markGroupRead,
+    scrollDown,
+  ]);
 
   useEffect(() => {
     if (!id || !user?.id || !isMember) return;
@@ -289,12 +525,59 @@ export default function GroupChatPage() {
     setSending(false);
   };
 
+  const removeMember = async (targetUserId: string) => {
+    if (!id || !user?.id) return;
+
+    const target = members.find((m) => m.user_id === targetUserId);
+    if (!target) return;
+
+    if (myRole === "member") return;
+    if (myRole === "admin" && target.role !== "member") return;
+    if (myRole === "owner" && target.user_id === user.id) return;
+
+    const { error } = await supabase
+      .from("group_chat_members")
+      .delete()
+      .eq("group_chat_id", id)
+      .eq("user_id", targetUserId);
+
+    if (error) {
+      console.error("Ошибка удаления участника:", error);
+      return;
+    }
+
+    await loadMembers(id, user.id);
+  };
+
+  const addMember = async () => {
+    if (!id || !user?.id) return;
+    if (myRole !== "owner" && myRole !== "admin") return;
+
+    const userIdToAdd = window.prompt("Вставь id пользователя:");
+    if (!userIdToAdd) return;
+
+    const { error } = await supabase.from("group_chat_members").insert({
+      group_chat_id: id,
+      user_id: userIdToAdd,
+      role: "member",
+      added_by: user.id,
+    });
+
+    if (error) {
+      console.error("Ошибка добавления участника:", error);
+      alert("Не удалось добавить участника");
+      return;
+    }
+
+    await loadMembers(id, user.id);
+  };
+
   const getProfileById = (userId: string) => {
     return profiles.find((p) => p.id === userId) ?? null;
   };
 
   const getDisplayName = (sender: Profile | null) => {
-    return sender?.full_name || "Пользователь";
+    return sender?.full_name || sender?.username || "Пользователь";
   };
 
   if (!user && !loading) return null;
@@ -344,7 +627,11 @@ export default function GroupChatPage() {
             <ArrowLeft size={22} />
           </button>
 
-          <Link href="/chat" className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={() => setIsInfoOpen(true)}
+            className="flex items-center gap-3 min-w-0 text-left p-0 m-0 bg-transparent border-none rounded-none"
+          >
             <div className="relative shrink-0">
               <div className="w-10 h-10 rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm">
                 {group?.avatar_url ? (
@@ -368,13 +655,18 @@ export default function GroupChatPage() {
                 {group?.title || "Группа"}
               </h1>
               <p className="text-[11px] font-medium text-indigo-500 dark:text-indigo-400 truncate">
-                Групповой чат
+                {members.length > 0
+                  ? `${members.length} участников`
+                  : "Групповой чат"}
               </p>
             </div>
-          </Link>
+          </button>
         </div>
 
-        <button className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+        <button
+          onClick={() => setIsInfoOpen(true)}
+          className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+        >
           <MoreHorizontal size={20} />
         </button>
       </header>
@@ -493,6 +785,15 @@ export default function GroupChatPage() {
           </button>
         </div>
       </footer>
+      <GroupChatInfoDrawer
+        open={isInfoOpen}
+        onClose={() => setIsInfoOpen(false)}
+        groupTitle={group?.title || "Группа"}
+        members={members}
+        currentUserId={user.id}
+        onRemoveMember={removeMember}
+        onAddMember={addMember}
+      />
 
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar {
