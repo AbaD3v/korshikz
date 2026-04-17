@@ -210,18 +210,11 @@ export function Header({ theme, setTheme, city, setCity }: HeaderProps) {
               onChange={(e) => handleCityChange(e.target.value)}
               className="bg-transparent text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer dark:text-gray-200"
             >
-<<<<<<< HEAD
-              <option value="Алматы" className="dark:bg-gray-900">Алматы</option>
-              <option value="Астана" className="dark:bg-gray-900">Астана</option>
-              <option value="Шымкент" className="dark:bg-gray-900">Шымкент</option>
-              <option value="Караганда" className="dark:bg-gray-900">Караганда</option>
-=======
               {CITY_OPTIONS.map((item) => (
                 <option key={item} value={item} className="dark:bg-gray-900">
                   {item}
                 </option>
               ))}
->>>>>>> fbd0f7846611f94ed7697e8f537f8a6c5febf6ab
             </select>
           </div>
         </div>
