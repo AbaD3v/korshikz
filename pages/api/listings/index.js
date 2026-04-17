@@ -1,5 +1,5 @@
 // pages/api/listings/index.js
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 const getFirstQueryValue = (value) => {
   if (Array.isArray(value)) return value[0];
@@ -13,24 +13,37 @@ export default async function handler(req, res) {
   );
 
   try {
-    const university = getFirstQueryValue(req.query.university);
+    const universityId = getFirstQueryValue(req.query.university_id);
     const budget = getFirstQueryValue(req.query.budget);
-    const myUniversity = getFirstQueryValue(req.query.myUniversity);
-    // const myStatus = getFirstQueryValue(req.query.myStatus); // пока оставил на будущее
+    const myUniversityId = getFirstQueryValue(req.query.myUniversityId);
+    const status = getFirstQueryValue(req.query.status);
+    const search = getFirstQueryValue(req.query.search);
 
     let query = supabase
-      .from('profiles')
-      .select('*')
-      .eq('is_verified', true)
-      .not('status', 'is', null)
-      .neq('status', 'inactive');
+      .from("profiles")
+      .select(`
+        *,
+        city:cities(id, name),
+        university:universities(id, name, city_id)
+      `)
+      .eq("is_verified", true)
+      .not("status", "is", null)
+      .neq("status", "inactive");
 
-    if (university) {
-      query = query.ilike('university', `%${university}%`);
+    if (universityId) {
+      query = query.eq("university_id", universityId);
     }
 
-    if (budget && budget !== '0' && !Number.isNaN(Number(budget))) {
-      query = query.lte('budget', Number(budget));
+    if (status) {
+      query = query.eq("status", status);
+    }
+
+    if (search) {
+      query = query.ilike("full_name", `%${search}%`);
+    }
+
+    if (budget && budget !== "0" && !Number.isNaN(Number(budget))) {
+      query = query.lte("budget", Number(budget));
     }
 
     const { data: profiles, error: profileError } = await query;
@@ -44,10 +57,13 @@ export default async function handler(req, res) {
     const profileIds = profiles.map((profile) => profile.id);
 
     const { data: allListings, error: listError } = await supabase
-      .from('listings')
-      .select('*')
-      .in('user_id', profileIds)
-      .order('created_at', { ascending: false });
+      .from("listings")
+      .select(`
+        *,
+        city_ref:cities(id, name)
+      `)
+      .in("user_id", profileIds)
+      .order("created_at", { ascending: false });
 
     if (listError) throw listError;
 
@@ -65,9 +81,9 @@ export default async function handler(req, res) {
     }));
 
     const sortedData = combinedData.sort((a, b) => {
-      if (myUniversity) {
-        if (a.university === myUniversity && b.university !== myUniversity) return -1;
-        if (a.university !== myUniversity && b.university === myUniversity) return 1;
+      if (myUniversityId) {
+        if (a.university_id === myUniversityId && b.university_id !== myUniversityId) return -1;
+        if (a.university_id !== myUniversityId && b.university_id === myUniversityId) return 1;
       }
 
       return 0;
@@ -75,9 +91,9 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ data: sortedData });
   } catch (err) {
-    console.error('SERVER ERROR:', err);
+    console.error("SERVER ERROR:", err);
     return res.status(500).json({
-      error: err?.message || 'Internal server error',
+      error: err?.message || "Internal server error",
     });
   }
 }

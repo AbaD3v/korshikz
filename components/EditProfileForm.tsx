@@ -1,3 +1,4 @@
+// src/components/EditProfileForm.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient.js";
 import { toast } from "sonner";
@@ -55,6 +56,19 @@ export default function EditProfileForm({ profile, onSave, onCancel }: Props) {
 
   const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(profile.avatar_url);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (avatarFile) {
+      const url = URL.createObjectURL(avatarFile);
+      setAvatarPreview(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setAvatarPreview(profile.avatar_url);
+    }
+  }, [avatarFile, profile.avatar_url]);
 
   const isChanged = useMemo(() => 
     JSON.stringify(form) !== JSON.stringify(initialForm), 
@@ -122,80 +136,162 @@ export default function EditProfileForm({ profile, onSave, onCancel }: Props) {
         </button>
       </div>
 
-      <div className="p-6 space-y-6">
-        {/* Personal Info */}
-        <section className={sectionClass}>
-          <h3 className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest flex items-center gap-2">
-            <User size={14} /> Личные данные
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>ФИО</label>
-              <input className={inputClass} value={form.full_name} onChange={e => handleChange("full_name", e.target.value)} />
-            </div>
-            <div>
-              <label className={labelClass}>Никнейм</label>
-              <input className={inputClass} value={form.username} onChange={e => handleChange("username", e.target.value)} />
-            </div>
-            <div>
-              <label className={labelClass}>Возраст</label>
-              <input className={inputClass} type="number" value={form.age} onChange={e => handleChange("age", e.target.value)} />
-            </div>
-            <div>
-              <label className={labelClass}>Город</label>
-              <input className={inputClass} value={form.city} onChange={e => handleChange("city", e.target.value)} />
+      <div className="p-6">
+        <div className="flex flex-col gap-5 md:flex-row">
+          <div className="md:w-56">
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
+              Аватар
+            </label>
+
+            <div className="flex flex-col items-center rounded-2xl border border-dashed border-gray-300 p-4 dark:border-gray-700">
+              <div className="mb-3 h-28 w-28 overflow-hidden rounded-full border bg-gray-100 dark:bg-gray-800">
+                {avatarPreview ? (
+                  <img
+                    src={avatarPreview}
+                    alt="Аватар"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">
+                    Нет фото
+                  </div>
+                )}
+              </div>
+
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setAvatarFile(e.target.files?.[0] || null)}
+                className="block w-full text-sm"
+              />
+
+              {errors.avatar && (
+                <p className="mt-2 text-xs text-red-500">{errors.avatar}</p>
+              )}
             </div>
           </div>
-        </section>
+
+          <div className="flex-1 space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                Полное имя
+              </label>
+              <input
+                className="w-full rounded-xl border px-3 py-2"
+                value={form.full_name}
+                onChange={(e) => handleChange("full_name", e.target.value)}
+              />
+              {errors.full_name && (
+                <p className="mt-1 text-xs text-red-500">
+                  {errors.full_name}
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Возраст
+                </label>
+                <input
+                  className="w-full rounded-xl border px-3 py-2"
+                  type="number"
+                  value={form.age}
+                  onChange={(e) => handleChange("age", e.target.value)}
+                />
+                {errors.age && (
+                  <p className="mt-1 text-xs text-red-500">{errors.age}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium">Город</label>
+                <input
+                  className="w-full rounded-xl border px-3 py-2"
+                  value={form.city}
+                  onChange={(e) => handleChange("city", e.target.value)}
+                />
+                {errors.city && (
+                  <p className="mt-1 text-xs text-red-500">{errors.city}</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                Университет
+              </label>
+              <input
+                className="w-full rounded-xl border px-3 py-2"
+                value={form.university}
+                onChange={(e) => handleChange("university", e.target.value)}
+              />
+              {errors.university && (
+                <p className="mt-1 text-xs text-red-500">
+                  {errors.university}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+        </div>
 
         {/* University Info */}
-        <section className={sectionClass}>
+        <section className="p-5 rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#1a1d26]/50 space-y-4">
           <h3 className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest flex items-center gap-2">
             <GraduationCap size={14} /> Образование
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-1">
-              <label className={labelClass}>ВУЗ</label>
-              <input className={inputClass} value={form.university} onChange={e => handleChange("university", e.target.value)} />
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1">ВУЗ</label>
+              <input className="w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white" value={form.university} onChange={e => handleChange("university", e.target.value)} />
             </div>
             <div>
-              <label className={labelClass}>Факультет</label>
-              <input className={inputClass} value={form.faculty} onChange={e => handleChange("faculty", e.target.value)} />
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1">Факультет</label>
+              <input className="w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white" value={form.faculty} onChange={e => handleChange("faculty", e.target.value)} />
             </div>
             <div>
-              <label className={labelClass}>Курс</label>
-              <input className={inputClass} type="number" value={form.course} onChange={e => handleChange("course", e.target.value)} />
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1">Курс</label>
+              <input className="w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white" type="number" value={form.course} onChange={e => handleChange("course", e.target.value)} />
             </div>
           </div>
         </section>
 
         {/* Preferences & Bio */}
-        <section className={sectionClass}>
+        <section className="p-5 rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#1a1d26]/50 space-y-4">
           <h3 className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest flex items-center gap-2">
             <Info size={14} /> Дополнительно
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className={labelClass}>Статус</label>
-              <select className={inputClass} value={form.status} onChange={e => handleChange("status", e.target.value)}>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1">Статус</label>
+              <select className="w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white" value={form.status} onChange={e => handleChange("status", e.target.value)}>
                 <option value="searching">В поиске</option>
                 <option value="staying">Уже живу</option>
               </select>
             </div>
             <div>
-              <label className={labelClass}>Бюджет (₸)</label>
-              <input className={inputClass} type="number" value={form.budget} onChange={e => handleChange("budget", e.target.value)} />
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1">Бюджет (₸)</label>
+              <input className="w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white" type="number" value={form.budget} onChange={e => handleChange("budget", e.target.value)} />
             </div>
           </div>
           
           <div>
-            <label className={labelClass}>Хобби</label>
-            <input className={inputClass} value={form.hobbies} onChange={e => handleChange("hobbies", e.target.value)} placeholder="Через запятую..." />
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1">Хобби</label>
+            <input className="w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white" value={form.hobbies} onChange={e => handleChange("hobbies", e.target.value)} placeholder="Через запятую..." />
           </div>
 
           <div>
-            <label className={labelClass}>О себе</label>
-            <textarea className={`${inputClass} min-h-[100px] resize-none`} value={form.about_me} onChange={e => handleChange("about_me", e.target.value)} />
+            <label className="mb-1 block text-sm font-medium">О себе</label>
+            <textarea
+              className="w-full rounded-xl border px-3 py-2"
+              rows={4}
+              value={form.about_me}
+              onChange={(e) => handleChange("about_me", e.target.value)}
+            />
+            {errors.about_me && (
+              <p className="mt-1 text-xs text-red-500">{errors.about_me}</p>
+            )}
           </div>
 
           {/* Toggles */}
@@ -216,24 +312,22 @@ export default function EditProfileForm({ profile, onSave, onCancel }: Props) {
             </label>
           </div>
         </section>
-      </div>
 
-      {/* Footer */}
-      <div className="px-6 py-5 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end gap-3 bg-gray-50/30 dark:bg-[#1a1d26]/30">
-        <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors">
-          Отмена
-        </button>
+      <div className="flex gap-3 p-6">
         <button
-          onClick={handleSubmit}
+          className="rounded-xl bg-emerald-600 px-4 py-2 text-white disabled:opacity-60"
           disabled={saving || !isChanged}
-          className={`flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-semibold transition-all ${
-            isChanged 
-            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 active:scale-95' 
-            : 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
-          }`}
+          onClick={handleSubmit}
         >
-          {saving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save size={16} />}
           {saving ? "Сохранение..." : "Сохранить"}
+        </button>
+
+        <button
+          className="rounded-xl border px-4 py-2"
+          onClick={onCancel}
+          disabled={saving}
+        >
+          Отмена
         </button>
       </div>
     </div>

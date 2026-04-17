@@ -9,16 +9,30 @@ const router = Router();
  */
 router.get("/", async (req, res) => {
   try {
-    const { 
-      university, status, budget, 
-      myUniversity, myStatus 
+    const {
+      university_id: universityId,
+      status,
+      budget,
+      myUniversityId,
+      myStatus,
     } = req.query;
 
     let sql = `
       SELECT 
-        p.id, p.full_name, p.avatar_url, p.university, p.status, p.budget, p.about_me,
+        p.id,
+        p.full_name,
+        p.avatar_url,
+        p.city_id,
+        p.university_id,
+        c.name AS city,
+        u.name AS university,
+        p.status,
+        p.budget,
+        p.about_me,
         l.id as listing_id, l.address, l.lat, l.lng, l.price as listing_price, l.title as listing_title
       FROM profiles p
+      LEFT JOIN cities c ON c.id = p.city_id
+      LEFT JOIN universities u ON u.id = p.university_id
       LEFT JOIN listings l ON p.id = l.user_id
       WHERE p.status IS NOT NULL
     `;
@@ -26,9 +40,9 @@ router.get("/", async (req, res) => {
     const params = [];
 
     // --- ФИЛЬТРЫ ---
-    if (university) { 
-      params.push(university); 
-      sql += ` AND p.university = $${params.length}`; 
+    if (universityId) {
+      params.push(universityId);
+      sql += ` AND p.university_id = $${params.length}`;
     }
     if (status) { 
       params.push(status); 
@@ -43,9 +57,9 @@ router.get("/", async (req, res) => {
     sql += ` ORDER BY `;
 
     // 1. Приоритет своего ВУЗа
-    if (myUniversity) {
-      params.push(myUniversity);
-      sql += `(p.university = $${params.length}) DESC, `;
+    if (myUniversityId) {
+      params.push(myUniversityId);
+      sql += `(p.university_id = $${params.length}) DESC, `;
     }
 
     // 2. Зеркальный мэтчинг (используем текстовые ENUM)

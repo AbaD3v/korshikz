@@ -38,6 +38,10 @@ type ProfileAccessData = {
   is_verified?: boolean | null;
   verification_status?: string | null;
   isOnboarded?: boolean | null;
+  city_id?: string | null;
+  university_id?: string | null;
+  city?: { name: string } | null;
+  university?: { name: string } | null;
 };
 
 type GalleryItem = {
@@ -62,6 +66,11 @@ const parsePoint = (
     lng: Number(match[1]),
     lat: Number(match[2]),
   };
+};
+
+const pickRelation = <T,>(value: T | T[] | null | undefined): T | null => {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
 };
 
 export default function CreateListingPage({
@@ -127,14 +136,29 @@ export default function CreateListingPage({
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
           .select(
-            "id, full_name, status, is_verified, verification_status, isOnboarded"
+            "id, full_name, status, is_verified, verification_status, isOnboarded, city_id, university_id, city:cities(name), university:universities(name)"
           )
           .eq("id", authUser.id)
           .maybeSingle();
 
         if (profileError) throw profileError;
 
-        setProfile(profileData || null);
+        const normalizedProfile = profileData
+          ? {
+              ...(profileData as any),
+              city: pickRelation((profileData as any).city),
+              university: pickRelation((profileData as any).university),
+            }
+          : null;
+
+        setProfile(normalizedProfile);
+
+        if (normalizedProfile?.city?.name) {
+          setFormData((prev: any) => ({
+            ...prev,
+            city: normalizedProfile.city?.name || prev.city,
+          }));
+        }
 
         const { data: latestListing, error: listingError } = await supabase
           .from("listings")
@@ -162,7 +186,6 @@ export default function CreateListingPage({
               latestListing.price !== null && latestListing.price !== undefined
                 ? String(latestListing.price)
                 : "",
-            city: latestListing.city || prev.city,
             address: latestListing.address || "",
             property_type: latestListing.property_type || "apartment",
             rent_type: latestListing.rent_type || "long",
@@ -240,7 +263,6 @@ export default function CreateListingPage({
           data.price !== undefined && data.price !== null
             ? String(data.price)
             : prev.price,
-        city: data.city || prev.city,
         address: data.address || prev.address,
         rooms:
           data.rooms !== undefined && data.rooms !== null
@@ -274,7 +296,7 @@ export default function CreateListingPage({
 
       if (data.address) {
         setTimeout(() => {
-          handleFindOnMap(data.address, data.city || formData.city);
+          handleFindOnMap(data.address, profile?.city?.name || formData.city);
         }, 500);
       }
     } catch (err: any) {
@@ -286,7 +308,7 @@ export default function CreateListingPage({
 
   const handleFindOnMap = async (addr?: string, cty?: string) => {
     const targetAddress = addr || formData.address;
-    const targetCity = cty || formData.city;
+    const targetCity = cty || profile?.city?.name || formData.city;
 
     if (!targetAddress) return;
 
@@ -422,9 +444,13 @@ export default function CreateListingPage({
       const toNum = (val: any) =>
         val === "" || val === null || val === undefined ? null : Number(val);
 
+      const { city: _cityName, ...listingFormData } = formData;
+
       const submissionData = {
-        ...formData,
+        ...listingFormData,
         user_id: user.id,
+        city_id: profile?.city_id ?? null,
+        city: profile?.city?.name || formData.city || null,
         price: toNum(formData.price) || 0,
         rooms: toNum(formData.rooms),
         area_total: toNum(formData.area_total),
@@ -624,11 +650,10 @@ export default function CreateListingPage({
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <input
-                name="city"
-                value={formData.city}
-                onChange={handleChange}
+                value={profile?.city?.name || formData.city}
+                readOnly
                 placeholder="Город"
-                className="bg-slate-100 dark:bg-slate-800/50 p-5 rounded-3xl font-bold outline-none dark:text-white"
+                className="bg-slate-100 dark:bg-slate-800/50 p-5 rounded-3xl font-bold outline-none dark:text-white opacity-70 cursor-not-allowed"
               />
 
               <div className="md:col-span-2 flex gap-2">
