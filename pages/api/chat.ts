@@ -1,15 +1,22 @@
 // pages/api/chat.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import { GoogleGenAI } from "@google/genai";
 
 type ChatMessage = {
   role: "system" | "user" | "assistant";
   content: string;
 };
 
-const gemini = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+let gemini: any = null;
+
+async function getGemini() {
+  if (!gemini) {
+    const { GoogleGenAI } = await import("@google/genai");
+    gemini = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+    });
+  }
+  return gemini;
+}
 
 function normalizeText(content: unknown): string {
   if (typeof content === "string") return content;
@@ -51,6 +58,8 @@ async function streamWithGemini(messages: ChatMessage[], res: NextApiResponse) {
     throw new Error("Missing GEMINI_API_KEY");
   }
 
+  const geminiInstance = await getGemini();
+
   const systemMessage =
     messages.find((m) => m.role === "system")?.content ?? "";
 
@@ -66,7 +75,7 @@ async function streamWithGemini(messages: ChatMessage[], res: NextApiResponse) {
     parts: [{ text: msg.content }],
   }));
 
-  const chat = gemini.chats.create({
+  const chat = geminiInstance.chats.create({
     model: "gemini-2.5-flash",
     history,
     config: {
