@@ -8,18 +8,18 @@ import {
   CheckCircle2, Sparkles
 } from "lucide-react";
 
-// Интерфейс на основе твоего JSON
+// Интерфейс совместимый с ProfilePublicData
 interface Profile {
   id: string;
-  email: string;
+  email?: string | null;
   full_name: string | null;
   username: string | null;
   age: number | null;
   gender: string | null;
-  university: string | null;
-  faculty: string | null;
-  course: number | null;
-  city: string | null;
+  university?: { id: string; name: string } | string | null;
+  faculty?: string | null;
+  course?: number | null;
+  city?: { id: string; name: string } | string | null;
   hobbies: string | null;
   about_me: string | null;
   pets: boolean | null;
@@ -27,32 +27,46 @@ interface Profile {
   status: string | null;
   budget: number | null;
   avatar_url: string | null;
-  is_verified: boolean;
+  is_verified?: boolean;
 }
 
 interface Props {
   profile: Profile;
-  onSave: (data: Profile) => void;
+  onSave: (data: Partial<Profile>) => void;
   onCancel: () => void;
 }
 
 export default function EditProfileForm({ profile, onSave, onCancel }: Props) {
-  // Инициализация строго по полям из JSON
-  const initialForm = useMemo(() => ({
-    full_name: profile.full_name ?? "",
-    username: profile.username ?? "",
-    age: profile.age ? String(profile.age) : "",
-    university: profile.university ?? "",
-    faculty: profile.faculty ?? "",
-    course: profile.course ? String(profile.course) : "",
-    city: profile.city ?? "",
-    hobbies: profile.hobbies ?? "",
-    about_me: profile.about_me ?? "",
-    status: profile.status ?? "searching",
-    budget: profile.budget ? String(profile.budget) : "0",
-    pets: Boolean(profile.pets),
-    smoking: Boolean(profile.smoking),
-  }), [profile]);
+  // Инициализация - обработка university и city как объектов или строк
+  const initialForm = useMemo(() => {
+    const getUniversityValue = () => {
+      if (!profile.university) return "";
+      if (typeof profile.university === "string") return profile.university;
+      return profile.university.name ?? "";
+    };
+
+    const getCityValue = () => {
+      if (!profile.city) return "";
+      if (typeof profile.city === "string") return profile.city;
+      return profile.city.name ?? "";
+    };
+
+    return {
+      full_name: profile.full_name ?? "",
+      username: profile.username ?? "",
+      age: profile.age ? String(profile.age) : "",
+      university: getUniversityValue(),
+      faculty: profile.faculty ?? "",
+      course: profile.course ? String(profile.course) : "",
+      city: getCityValue(),
+      hobbies: profile.hobbies ?? "",
+      about_me: profile.about_me ?? "",
+      status: profile.status ?? "searching",
+      budget: profile.budget ? String(profile.budget) : "0",
+      pets: Boolean(profile.pets),
+      smoking: Boolean(profile.smoking),
+    };
+  }, [profile]);
 
   const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
