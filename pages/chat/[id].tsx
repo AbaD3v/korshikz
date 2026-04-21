@@ -1,4 +1,3 @@
-"use client";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "@/hooks/utils/supabase/client";
 import { useRouter } from "next/router";
