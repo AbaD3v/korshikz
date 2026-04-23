@@ -3,7 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/hooks/utils/supabase/client";
 import { useRouter } from "next/router";
-import { v4 as uuidv4 } from "uuid";
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+const newUUID = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
 
 type Message = {
   id: string;
@@ -89,7 +99,7 @@ export default function ChatPage() {
         if (existingMessages && existingMessages.length > 0) {
           convId = existingMessages[0].conversation_id;
         } else {
-          convId = uuidv4();
+          convId = newUUID();
         }
 
         if (cancelled) return;
@@ -169,7 +179,7 @@ export default function ChatPage() {
     const trimmed = input.trim();
 
     const messagePayload: Message = {
-      id: uuidv4(),
+      id: newUUID(),
       conversation_id: conversationId,
       sender_id: currentUser.id,
       receiver_id: otherUserId,

@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { smartStreamingRouter, ChatMode } from "../chatbot-ai/router";
-import { v4 as uuidv4 } from "uuid";
 
 // Интерфейс сообщения
 export interface Message {
@@ -83,8 +82,8 @@ export function ChatbotProvider({
         text: m.text 
       }));
 
-    const userMsgId = uuidv4();
-    const aiMsgId = uuidv4();
+    const userMsgId = crypto.randomUUID();
+    const aiMsgId = crypto.randomUUID();
 
     // Добавляем сообщения в стейт
     setMessages((prev) => [

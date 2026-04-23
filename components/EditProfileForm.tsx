@@ -1,324 +1,156 @@
 // src/components/EditProfileForm.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabaseClient";
-import {
-  useLocationOptions,
-} from "@/hooks/useLocationOptions";
-import { normalizeProfileLocation } from "@/lib/normalizeProfileLocation";
+import { supabase } from "@/lib/supabaseClient.js";
+import { toast } from "sonner";
+import { 
+  Save, X, User, GraduationCap, 
+  MapPin, Hash, Heart, Info,
+  CheckCircle2, Sparkles
+} from "lucide-react";
 
+// Интерфейс совместимый с ProfilePublicData
 interface Profile {
   id: string;
+  email?: string | null;
   full_name: string | null;
+  username: string | null;
   age: number | null;
-  city_id: string | null;
-  university_id: string | null;
+  gender: string | null;
+  university?: { id: string; name: string } | string | null;
+  faculty?: string | null;
+  course?: number | null;
+  city?: { id: string; name: string } | string | null;
   hobbies: string | null;
   about_me: string | null;
   pets: boolean | null;
   smoking: boolean | null;
+  status: string | null;
+  budget: number | null;
   avatar_url: string | null;
+  is_verified?: boolean;
 }
 
-interface EditProfileFormProps {
+interface Props {
   profile: Profile;
-  onSave: (data: Profile) => void;
+  onSave: (data: Partial<Profile>) => void;
   onCancel: () => void;
 }
 
-interface FormState {
-  full_name: string;
-  age: string;
-  city_id: string;
-  university_id: string;
-  hobbies: string;
-  about_me: string;
-  pets: boolean;
-  smoking: boolean;
-}
+export default function EditProfileForm({ profile, onSave, onCancel }: Props) {
+  // Инициализация - обработка university и city как объектов или строк
+  const initialForm = useMemo(() => {
+    const getUniversityValue = () => {
+      if (!profile.university) return "";
+      if (typeof profile.university === "string") return profile.university;
+      return profile.university.name ?? "";
+    };
 
-interface FormErrors {
-  full_name?: string;
-  age?: string;
-  city_id?: string;
-  university_id?: string;
-  about_me?: string;
-  avatar?: string;
-  general?: string;
-}
+    const getCityValue = () => {
+      if (!profile.city) return "";
+      if (typeof profile.city === "string") return profile.city;
+      return profile.city.name ?? "";
+    };
 
-export default function EditProfileForm({
-  profile,
-  onSave,
-  onCancel,
-}: EditProfileFormProps) {
-  const initialForm: FormState = useMemo(
-    () => ({
+    return {
       full_name: profile.full_name ?? "",
+      username: profile.username ?? "",
       age: profile.age ? String(profile.age) : "",
-      city_id: profile.city_id ?? "",
-      university_id: profile.university_id ?? "",
+      university: getUniversityValue(),
+      faculty: profile.faculty ?? "",
+      course: profile.course ? String(profile.course) : "",
+      city: getCityValue(),
       hobbies: profile.hobbies ?? "",
       about_me: profile.about_me ?? "",
+      status: profile.status ?? "searching",
+      budget: profile.budget ? String(profile.budget) : "0",
       pets: Boolean(profile.pets),
       smoking: Boolean(profile.smoking),
-    }),
-    [profile]
-  );
+    };
+  }, [profile]);
 
-  const [form, setForm] = useState<FormState>(initialForm);
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(
-    profile.avatar_url ?? null
-  );
+  const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
-  const [errors, setErrors] = useState<FormErrors>({});
-
-  const {
-    cities,
-    universities,
-    loading: loadingOptions,
-    error: locationOptionsError,
-  } = useLocationOptions();
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(profile.avatar_url);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    setForm(initialForm);
-    setAvatarPreview(profile.avatar_url ?? null);
-    setAvatarFile(null);
-    setErrors({});
-  }, [initialForm, profile.avatar_url]);
-
-  useEffect(() => {
-    if (!avatarFile) return;
-
-    const objectUrl = URL.createObjectURL(avatarFile);
-    setAvatarPreview(objectUrl);
-
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [avatarFile]);
-
-  useEffect(() => {
-    if (!locationOptionsError) return;
-
-    setErrors((prev) => ({
-      ...prev,
-      general: locationOptionsError,
-    }));
-  }, [locationOptionsError]);
-
-  const filteredUniversities = useMemo(() => {
-    if (!form.city_id) return universities;
-    return universities.filter((u) => u.city_id === form.city_id);
-  }, [universities, form.city_id]);
-
-  const selectedCity = useMemo(
-    () => cities.find((city) => city.id === form.city_id) ?? null,
-    [cities, form.city_id]
-  );
-
-  const selectedUniversity = useMemo(
-    () => universities.find((u) => u.id === form.university_id) ?? null,
-    [universities, form.university_id]
-  );
-
-  const isChanged = useMemo(() => {
-    return (
-      form.full_name !== initialForm.full_name ||
-      form.age !== initialForm.age ||
-      form.city_id !== initialForm.city_id ||
-      form.university_id !== initialForm.university_id ||
-      form.hobbies !== initialForm.hobbies ||
-      form.about_me !== initialForm.about_me ||
-      form.pets !== initialForm.pets ||
-      form.smoking !== initialForm.smoking ||
-      avatarFile !== null
-    );
-  }, [form, initialForm, avatarFile]);
-
-  const handleChange = <K extends keyof FormState>(
-    field: K,
-    value: FormState[K]
-  ) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-    setErrors((prev) => ({ ...prev, [field]: undefined, general: undefined }));
-  };
-
-  const handleCityChange = (cityId: string) => {
-    setForm((prev) => {
-      const stillValidUniversity = universities.some(
-        (u) => u.id === prev.university_id && u.city_id === cityId
-      );
-
-      return {
-        ...prev,
-        city_id: cityId,
-        university_id: stillValidUniversity ? prev.university_id : "",
-      };
-    });
-
-    setErrors((prev) => ({
-      ...prev,
-      city_id: undefined,
-      university_id: undefined,
-      general: undefined,
-    }));
-  };
-
-  const handleUniversityChange = (universityId: string) => {
-    const selected = universities.find((u) => u.id === universityId);
-
-    setForm((prev) => ({
-      ...prev,
-      university_id: universityId,
-      city_id: selected?.city_id ?? prev.city_id ?? "",
-    }));
-
-    setErrors((prev) => ({
-      ...prev,
-      university_id: undefined,
-      city_id: undefined,
-      general: undefined,
-    }));
-  };
-
-  const validateForm = () => {
-    const nextErrors: FormErrors = {};
-
-    const trimmedName = form.full_name.trim();
-    const trimmedAboutMe = form.about_me.trim();
-
-    if (!trimmedName) {
-      nextErrors.full_name = "Введите имя";
-    } else if (trimmedName.length < 2) {
-      nextErrors.full_name = "Имя слишком короткое";
-    }
-
-    if (form.age) {
-      const ageNumber = Number(form.age);
-      if (Number.isNaN(ageNumber)) {
-        nextErrors.age = "Возраст должен быть числом";
-      } else if (ageNumber < 16 || ageNumber > 100) {
-        nextErrors.age = "Возраст должен быть от 16 до 100";
-      }
-    }
-
-    if (!form.city_id) {
-      nextErrors.city_id = "Выберите город";
-    }
-
-    if (!form.university_id) {
-      nextErrors.university_id = "Выберите университет";
-    }
-
-    if (trimmedAboutMe.length > 300) {
-      nextErrors.about_me = "О себе должно быть не длиннее 300 символов";
-    }
-
     if (avatarFile) {
-      const maxSizeMb = 3;
-      if (!avatarFile.type.startsWith("image/")) {
-        nextErrors.avatar = "Можно загружать только изображения";
-      } else if (avatarFile.size > maxSizeMb * 1024 * 1024) {
-        nextErrors.avatar = `Размер фото должен быть меньше ${maxSizeMb} МБ`;
-      }
+      const url = URL.createObjectURL(avatarFile);
+      setAvatarPreview(url);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setAvatarPreview(profile.avatar_url);
     }
+  }, [avatarFile, profile.avatar_url]);
 
-    if (form.university_id) {
-      const selected = universities.find((u) => u.id === form.university_id);
+  const isChanged = useMemo(() => 
+    JSON.stringify(form) !== JSON.stringify(initialForm), 
+  [form, initialForm]);
 
-      if (!selected) {
-        nextErrors.university_id = "Выбранный университет не найден";
-      } else if (form.city_id && selected.city_id !== form.city_id) {
-        nextErrors.university_id =
-          "Университет не относится к выбранному городу";
-      }
-    }
-
-    setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
-  };
-
-  const uploadAvatar = async (file: File): Promise<string> => {
-    const fileExt = file.name.split(".").pop() || "jpg";
-    const fileName = `${profile.id}-${Date.now()}.${fileExt}`;
-    const filePath = `avatars/${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("avatars")
-      .upload(filePath, file, {
-        cacheControl: "3600",
-        upsert: true,
-      });
-
-    if (uploadError) {
-      throw new Error(uploadError.message);
-    }
-
-    const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
-    return data.publicUrl;
+  const handleChange = (field: string, value: any) => {
+    setForm(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) return;
-
     setSaving(true);
-    setErrors({});
-
+    const t = toast.loading("Обновление данных...");
     try {
-      let avatar_url = profile.avatar_url ?? null;
-
-      if (avatarFile) {
-        avatar_url = await uploadAvatar(avatarFile);
-      }
-
-      const normalizedLocation = await normalizeProfileLocation({
-        cityId: form.city_id,
-        universityId: form.university_id,
-      });
-
-      const updatePayload = {
-        full_name: form.full_name.trim() || null,
+      const payload = {
+        full_name: form.full_name || null,
+        username: form.username || null,
         age: form.age ? Number(form.age) : null,
-        city_id: normalizedLocation.city_id,
-        university_id: normalizedLocation.university_id,
-        hobbies: form.hobbies.trim() || null,
-        about_me: form.about_me.trim() || null,
+        university: form.university || null,
+        faculty: form.faculty || null,
+        course: form.course ? Number(form.course) : null,
+        city: form.city || null,
+        hobbies: form.hobbies || null,
+        about_me: form.about_me || null,
+        status: form.status,
+        budget: Number(form.budget),
         pets: form.pets,
         smoking: form.smoking,
-        avatar_url,
       };
 
       const { error } = await supabase
         .from("profiles")
-        .update(updatePayload)
+        .update(payload)
         .eq("id", profile.id);
 
-      if (error) {
-        throw new Error(error.message);
-      }
+      if (error) throw error;
 
-      onSave({
-        ...profile,
-        ...updatePayload,
-      });
-    } catch (err) {
-      setErrors({
-        general:
-          err instanceof Error ? err.message : "Не удалось сохранить профиль",
-      });
+      toast.success("Изменения сохранены", { id: t });
+      onSave({ ...profile, ...payload });
+    } catch (e: any) {
+      toast.error(e.message || "Ошибка", { id: t });
     } finally {
       setSaving(false);
     }
   };
 
+  const sectionClass = "p-5 rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#1a1d26]/50 space-y-4";
+  const labelClass = "block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1";
+  const inputClass = "w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white";
+
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-      <div className="mb-5">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Редактировать профиль
-        </h2>
+    <div className="max-w-3xl mx-auto bg-white dark:bg-[#161922] rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden transition-colors">
+      {/* Header */}
+      <div className="px-6 py-5 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-50 dark:bg-blue-500/10 rounded-lg">
+            <Sparkles size={20} className="text-blue-600 dark:text-blue-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold dark:text-white">Редактировать профиль</h2>
+            <p className="text-xs text-gray-500">{profile.email}</p>
+          </div>
+        </div>
+        <button onClick={onCancel} className="text-gray-400 hover:text-gray-600 dark:hover:text-white transition-colors">
+          <X size={22} />
+        </button>
       </div>
 
-      <div className="space-y-6">
+      <div className="p-6">
         <div className="flex flex-col gap-5 md:flex-row">
           <div className="md:w-56">
             <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
@@ -388,23 +220,13 @@ export default function EditProfileForm({
 
               <div>
                 <label className="mb-1 block text-sm font-medium">Город</label>
-                <select
+                <input
                   className="w-full rounded-xl border px-3 py-2"
-                  value={form.city_id}
-                  onChange={(e) => handleCityChange(e.target.value)}
-                  disabled={loadingOptions}
-                >
-                  <option value="">
-                    {loadingOptions ? "Загрузка..." : "Выберите город"}
-                  </option>
-                  {cities.map((city) => (
-                    <option key={city.id} value={city.id}>
-                      {city.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.city_id && (
-                  <p className="mt-1 text-xs text-red-500">{errors.city_id}</p>
+                  value={form.city}
+                  onChange={(e) => handleChange("city", e.target.value)}
+                />
+                {errors.city && (
+                  <p className="mt-1 text-xs text-red-500">{errors.city}</p>
                 )}
               </div>
             </div>
@@ -413,47 +235,64 @@ export default function EditProfileForm({
               <label className="mb-1 block text-sm font-medium">
                 Университет
               </label>
-              <select
+              <input
                 className="w-full rounded-xl border px-3 py-2"
-                value={form.university_id}
-                onChange={(e) => handleUniversityChange(e.target.value)}
-                disabled={loadingOptions || !form.city_id}
-              >
-                <option value="">
-                  {loadingOptions
-                    ? "Загрузка..."
-                    : form.city_id
-                    ? "Выберите университет"
-                    : "Сначала выберите город"}
-                </option>
-                {filteredUniversities.map((university) => (
-                  <option key={university.id} value={university.id}>
-                    {university.name}
-                  </option>
-                ))}
-              </select>
-              {errors.university_id && (
+                value={form.university}
+                onChange={(e) => handleChange("university", e.target.value)}
+              />
+              {errors.university && (
                 <p className="mt-1 text-xs text-red-500">
-                  {errors.university_id}
-                </p>
-              )}
-              {selectedCity && selectedUniversity && (
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Университет относится к городу: {selectedCity.name}
+                  {errors.university}
                 </p>
               )}
             </div>
           </div>
         </div>
+        </div>
 
-        <div className="space-y-4">
+        {/* University Info */}
+        <section className="p-5 rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#1a1d26]/50 space-y-4">
+          <h3 className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+            <GraduationCap size={14} /> Образование
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-1">
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1">ВУЗ</label>
+              <input className="w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white" value={form.university} onChange={e => handleChange("university", e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1">Факультет</label>
+              <input className="w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white" value={form.faculty} onChange={e => handleChange("faculty", e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1">Курс</label>
+              <input className="w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white" type="number" value={form.course} onChange={e => handleChange("course", e.target.value)} />
+            </div>
+          </div>
+        </section>
+
+        {/* Preferences & Bio */}
+        <section className="p-5 rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#1a1d26]/50 space-y-4">
+          <h3 className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest flex items-center gap-2">
+            <Info size={14} /> Дополнительно
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1">Статус</label>
+              <select className="w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white" value={form.status} onChange={e => handleChange("status", e.target.value)}>
+                <option value="searching">В поиске</option>
+                <option value="staying">Уже живу</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1">Бюджет (₸)</label>
+              <input className="w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white" type="number" value={form.budget} onChange={e => handleChange("budget", e.target.value)} />
+            </div>
+          </div>
+          
           <div>
-            <label className="mb-1 block text-sm font-medium">Хобби</label>
-            <input
-              className="w-full rounded-xl border px-3 py-2"
-              value={form.hobbies}
-              onChange={(e) => handleChange("hobbies", e.target.value)}
-            />
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 ml-1">Хобби</label>
+            <input className="w-full bg-white dark:bg-[#0f1117] border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all dark:text-white" value={form.hobbies} onChange={e => handleChange("hobbies", e.target.value)} placeholder="Через запятую..." />
           </div>
 
           <div>
@@ -469,50 +308,42 @@ export default function EditProfileForm({
             )}
           </div>
 
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={form.pets}
-              onChange={(e) => handleChange("pets", e.target.checked)}
-            />
-            Питомцы
-          </label>
-
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={form.smoking}
-              onChange={(e) => handleChange("smoking", e.target.checked)}
-            />
-            Курение
-          </label>
-        </div>
-
-        {errors.general && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-            {errors.general}
+          {/* Toggles */}
+          <div className="flex gap-6 pt-2">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" className="hidden" checked={form.pets} onChange={e => handleChange("pets", e.target.checked)} />
+              <div className={`w-5 h-5 rounded border transition-all flex items-center justify-center ${form.pets ? 'bg-blue-600 border-blue-600' : 'border-gray-300 dark:border-gray-700'}`}>
+                {form.pets && <CheckCircle2 size={12} className="text-white" />}
+              </div>
+              <span className="text-sm dark:text-gray-300">Питомцы</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" className="hidden" checked={form.smoking} onChange={e => handleChange("smoking", e.target.checked)} />
+              <div className={`w-5 h-5 rounded border transition-all flex items-center justify-center ${form.smoking ? 'bg-blue-600 border-blue-600' : 'border-gray-300 dark:border-gray-700'}`}>
+                {form.smoking && <CheckCircle2 size={12} className="text-white" />}
+              </div>
+              <span className="text-sm dark:text-gray-300">Курение</span>
+            </label>
           </div>
-        )}
+        </section>
 
-        <div className="flex gap-3">
-          <button
-            className="rounded-xl bg-emerald-600 px-4 py-2 text-white disabled:opacity-60"
-            disabled={saving || !isChanged || loadingOptions}
-            onClick={handleSubmit}
-          >
-            {saving ? "Сохранение..." : "Сохранить"}
-          </button>
+      <div className="flex gap-3 p-6">
+        <button
+          className="rounded-xl bg-emerald-600 px-4 py-2 text-white disabled:opacity-60"
+          disabled={saving || !isChanged}
+          onClick={handleSubmit}
+        >
+          {saving ? "Сохранение..." : "Сохранить"}
+        </button>
 
-          <button
-            className="rounded-xl border px-4 py-2"
-            onClick={onCancel}
-            disabled={saving}
-          >
-            Отмена
-          </button>
-        </div>
+        <button
+          className="rounded-xl border px-4 py-2"
+          onClick={onCancel}
+          disabled={saving}
+        >
+          Отмена
+        </button>
       </div>
     </div>
   );
 }
-

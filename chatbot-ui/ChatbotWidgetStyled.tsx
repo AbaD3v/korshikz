@@ -1,13 +1,17 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useChatbot, Message } from "./ChatbotProvider";
 import useChatbotStreaming from "./useChatbotStreaming";
 import { motion, AnimatePresence } from "framer-motion";
 import { User, Bot } from "lucide-react";
-import ReactMarkdown from "react-markdown"; 
 import type { ChatMode } from "../chatbot-ai/router";
 import { TypingText } from "./TypingText";
+
+const ReactMarkdown = dynamic(() => import("react-markdown"), {
+  ssr: false,
+});
 
 const MotionDiv = motion.div as any;
 const MotionButton = motion.button as any;

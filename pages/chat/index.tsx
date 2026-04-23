@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/router";
@@ -32,12 +32,8 @@ interface DirectDialogItem {
   unread: number;
   university?: string | null;
   is_verified?: boolean;
+  otherUserId: string; // Для внутреннего использования
 }
-
-const pickRelation = <T,>(value: T | T[] | null | undefined): T | null => {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value ?? null;
-};
 
 interface GroupDialogItem {
   id: string;
@@ -49,9 +45,15 @@ interface GroupDialogItem {
   lastTime: string | null;
   unread: number;
   lastAuthorName: string | null;
+  groupId: string; // Для внутреннего использования
 }
 
 type ChatListItem = DirectDialogItem | GroupDialogItem;
+
+const pickRelation = <T,>(value: T | T[] | null | undefined): T | null => {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+};
 
 export default function ChatList() {
   const [user, setUser] = useState<any>(null);
@@ -59,6 +61,9 @@ export default function ChatList() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const router = useRouter();
+  
+  // Кеш профилей для быстрого доступа
+  const profilesCache = useRef<Map<string, Profile>>(new Map());
 
   useEffect(() => {
     let active = true;
@@ -131,6 +136,14 @@ export default function ChatList() {
         console.error("Profiles load error:", profilesError);
       }
 
+      // Заполняем кеш профилей
+      profiles?.forEach(p => {
+        profilesCache.current.set(p.id, {
+          ...p,
+          university: pickRelation(p.university)
+        });
+      });
+
       const { data: unreadMessages, error: unreadError } = await supabase
         .from("messages")
         .select("sender_id, receiver_id, is_read")
@@ -142,8 +155,8 @@ export default function ChatList() {
       }
 
       return ids.map((uid) => {
-        const prof = profiles?.find((p) => p.id === uid);
-        const university = pickRelation(prof?.university);
+        const prof = profilesCache.current.get(uid);
+        const university = prof?.university;
         const dialog = dialogMap.get(uid);
         const unreadCount =
           unreadMessages?.filter((m) => m.sender_id === uid).length ?? 0;
@@ -163,6 +176,7 @@ export default function ChatList() {
           unread: unreadCount,
           university: university?.name ?? null,
           is_verified: Boolean(prof?.is_verified),
+          otherUserId: uid,
         };
       });
     },
@@ -228,18 +242,15 @@ export default function ChatList() {
         new Set((groupMessages ?? []).map((m) => m.sender_id).filter(Boolean))
       );
 
-      let senderProfiles: Profile[] = [];
-      if (senderIds.length > 0) {
-        const { data: profiles, error: senderProfilesError } = await supabase
+      // Загружаем недостающие профили в кеш
+      const missingIds = senderIds.filter(id => !profilesCache.current.has(id));
+      if (missingIds.length > 0) {
+        const { data: profiles } = await supabase
           .from("profiles")
           .select("id, full_name, avatar_url")
-          .in("id", senderIds);
-
-        if (senderProfilesError) {
-          console.error("Group sender profiles load error:", senderProfilesError);
-        } else {
-          senderProfiles = profiles ?? [];
-        }
+          .in("id", missingIds);
+          
+        profiles?.forEach(p => profilesCache.current.set(p.id, p));
       }
 
       const { data: unreadRows, error: unreadError } = await supabase
@@ -279,7 +290,7 @@ export default function ChatList() {
 
       return (groups ?? []).map((group) => {
         const latest = latestByGroup.get(group.id);
-        const author = senderProfiles.find((p) => p.id === latest?.sender_id);
+        const author = latest?.sender_id ? profilesCache.current.get(latest.sender_id) : null;
 
         return {
           id: `group-${group.id}`,
@@ -291,6 +302,7 @@ export default function ChatList() {
           lastTime: latest?.created_at ?? null,
           unread: unreadCountMap.get(group.id) ?? 0,
           lastAuthorName: author?.full_name ?? null,
+          groupId: group.id,
         };
       });
     },
@@ -322,6 +334,118 @@ export default function ChatList() {
     }
   }, [user?.id, loadDirectDialogs, loadGroupDialogs]);
 
+  // Оптимизированное обновление одного диалога (без полной перезагрузки)
+  const updateDirectDialogFromMessage = useCallback(async (message: any, currentUserId: string) => {
+    const otherId = message.sender_id === currentUserId ? message.receiver_id : message.sender_id;
+    const fromMe = message.sender_id === currentUserId;
+    
+    // Загружаем профиль если нет в кеше
+    if (!profilesCache.current.has(otherId)) {
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url, is_verified, university:universities(id, name)")
+        .eq("id", otherId)
+        .single();
+      if (data) {
+        profilesCache.current.set(otherId, { ...data, university: pickRelation(data.university) });
+      }
+    }
+
+    const prof = profilesCache.current.get(otherId);
+    
+    setDialogs(prev => {
+      const existingIndex = prev.findIndex(d => d.kind === "direct" && d.otherUserId === otherId);
+      const isNew = existingIndex === -1;
+      
+      const newItem: DirectDialogItem = {
+        id: `direct-${otherId}`,
+        kind: "direct",
+        href: `/chat/${otherId}`,
+        title: prof?.full_name ?? "Пользователь",
+        avatar_url: prof?.avatar_url ?? null,
+        lastMessage: fromMe ? `Вы: ${message.body}` : message.body,
+        lastTime: message.created_at,
+        unread: fromMe ? 0 : 1, // Если сообщение от другого, увеличиваем счетчик
+        university: prof?.university?.name ?? null,
+        is_verified: Boolean(prof?.is_verified),
+        otherUserId: otherId,
+      };
+
+      let newDialogs: ChatListItem[];
+      
+      if (isNew) {
+        // Новый диалог - добавляем в начало
+        newDialogs = [newItem, ...prev];
+      } else {
+        // Существующий - обновляем и перемещаем наверх
+        newDialogs = [...prev];
+        const existing = newDialogs[existingIndex] as DirectDialogItem;
+        
+        // Если сообщение от другого и чат не открыт, увеличиваем счетчик
+        const unreadIncrement = fromMe || message.is_read ? 0 : 1;
+        
+        newItem.unread = fromMe ? 0 : (existing.unread + unreadIncrement);
+        
+        // Удаляем старый и добавляем обновленный в начало
+        newDialogs.splice(existingIndex, 1);
+        newDialogs.unshift(newItem);
+      }
+      
+      return newDialogs;
+    });
+  }, []);
+
+  // Обновление группового диалога
+  const updateGroupDialogFromMessage = useCallback(async (message: any, currentUserId: string) => {
+    if (!profilesCache.current.has(message.sender_id)) {
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url")
+        .eq("id", message.sender_id)
+        .single();
+      if (data) profilesCache.current.set(message.sender_id, data);
+    }
+
+    const author = profilesCache.current.get(message.sender_id);
+    const isFromMe = message.sender_id === currentUserId;
+
+    setDialogs(prev => {
+      const existingIndex = prev.findIndex(d => d.kind === "group" && d.groupId === message.group_chat_id);
+      
+      const newItem: GroupDialogItem = {
+        id: `group-${message.group_chat_id}`,
+        kind: "group",
+        href: `/chat/group/${message.group_chat_id}`,
+        title: "Группа", // Будет обновлено при полной перезагрузке если нужно
+        avatar_url: null,
+        lastMessage: message.content,
+        lastTime: message.created_at,
+        unread: isFromMe ? 0 : 1,
+        lastAuthorName: author?.full_name ?? null,
+        groupId: message.group_chat_id,
+      };
+
+      let newDialogs: ChatListItem[];
+      
+      if (existingIndex === -1) {
+        newDialogs = [newItem, ...prev];
+      } else {
+        newDialogs = [...prev];
+        const existing = newDialogs[existingIndex] as GroupDialogItem;
+        
+        // Сохраняем title и avatar из существующего
+        newItem.title = existing.title;
+        newItem.avatar_url = existing.avatar_url;
+        newItem.unread = isFromMe ? 0 : existing.unread + 1;
+        
+        newDialogs.splice(existingIndex, 1);
+        newDialogs.unshift(newItem);
+      }
+      
+      return newDialogs;
+    });
+  }, []);
+
   useEffect(() => {
     if (!user?.id) return;
     loadDialogsSafe();
@@ -334,28 +458,72 @@ export default function ChatList() {
       .channel(`chat-list-${user.id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "messages" },
+        { 
+          event: "INSERT", 
+          schema: "public", 
+          table: "messages" 
+        },
+        (payload) => {
+          const message = payload.new;
+          // Проверяем, что сообщение относится к текущему пользователю
+          if (message.sender_id === user.id || message.receiver_id === user.id) {
+            updateDirectDialogFromMessage(message, user.id);
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { 
+          event: "UPDATE", 
+          schema: "public", 
+          table: "messages",
+          filter: `receiver_id=eq.${user.id}`
+        },
+        (payload) => {
+          // Обновление read статуса
+          if (payload.new.is_read && !payload.old.is_read) {
+            setDialogs(prev => prev.map(d => {
+              if (d.kind === "direct") {
+                // Сбрасываем счетчик если сообщение прочитано
+                return { ...d, unread: 0 };
+              }
+              return d;
+            }));
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { 
+          event: "INSERT", 
+          schema: "public", 
+          table: "group_chat_messages" 
+        },
+        (payload) => {
+          const message = payload.new;
+          updateGroupDialogFromMessage(message, user.id);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { 
+          event: "UPDATE", 
+          schema: "public", 
+          table: "group_chat_reads",
+          filter: `user_id=eq.${user.id}`
+        },
         () => {
+          // При обновлении прочтений перезагружаем счетчики
           loadDialogsSafe();
         }
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "group_chat_messages" },
-        () => {
-          loadDialogsSafe();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "group_chat_reads" },
-        () => {
-          loadDialogsSafe();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "group_chat_members" },
+        { 
+          event: "*", 
+          schema: "public", 
+          table: "group_chat_members" 
+        },
         () => {
           loadDialogsSafe();
         }
@@ -365,7 +533,7 @@ export default function ChatList() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, loadDialogsSafe]);
+  }, [user?.id, loadDialogsSafe, updateDirectDialogFromMessage, updateGroupDialogFromMessage]);
 
   const filteredDialogs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();

@@ -71,7 +71,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#FDFDFF] dark:bg-[#020617] text-slate-900 dark:text-white selection:bg-indigo-500 selection:text-white">
-
+      <link rel="icon" href="public/favicon.ico" />
       {/* HERO */}
       <section className="relative pt-28 pb-16 px-6 overflow-hidden">
         <div className="absolute inset-0 -z-10 pointer-events-none">
