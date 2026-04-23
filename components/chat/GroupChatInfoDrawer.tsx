@@ -27,11 +27,7 @@ interface GroupChatInfoDrawerProps {
   currentUserId: string;
   onRemoveMember: (userId: string) => void;
   onAddMember: () => void;
-  onMakeAdmin: (userId: string) => void;
-  onRemoveAdmin: (userId: string) => void;
-  onTransferOwnership: (userId: string) => void;
 }
-
 
 const roleLabelMap: Record<MemberRole, string> = {
   owner: "Владелец",
