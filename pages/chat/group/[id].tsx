@@ -240,6 +240,10 @@ export default function GroupChatPage() {
   const [isMember, setIsMember] = useState<boolean | null>(null);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [myRole, setMyRole] = useState<MemberRole | null>(null);
+  const [isAddMembersOpen, setIsAddMembersOpen] = useState(false);
+  const [allUsers, setAllUsers] = useState<Profile[]>([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [addingUserId, setAddingUserId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -549,28 +553,59 @@ export default function GroupChatPage() {
     await loadMembers(id, user.id);
   };
 
-  const addMember = async () => {
-    if (!id || !user?.id) return;
-    if (myRole !== "owner" && myRole !== "admin") return;
+  const openAddMembersModal = async () => {
+  if (!id || !user?.id) return;
+  if (myRole !== "owner" && myRole !== "admin") return;
 
-    const userIdToAdd = window.prompt("Вставь id пользователя:");
-    if (!userIdToAdd) return;
+  const memberIds = members.map((m) => m.user_id);
 
-    const { error } = await supabase.from("group_chat_members").insert({
-      group_chat_id: id,
-      user_id: userIdToAdd,
-      role: "member",
-      added_by: user.id,
-    });
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, avatar_url, username")
+    .order("full_name", { ascending: true });
 
-    if (error) {
-      console.error("Ошибка добавления участника:", error);
-      alert("Не удалось добавить участника");
-      return;
-    }
+  if (error) {
+    console.error("Ошибка загрузки пользователей:", error);
+    alert(`Ошибка загрузки пользователей: ${error.message}`);
+    return;
+  }
 
-    await loadMembers(id, user.id);
-  };
+  const filtered =
+    (data as Profile[] | null)?.filter(
+      (profile) =>
+        profile.id !== user.id && !memberIds.includes(profile.id)
+    ) || [];
+
+  setAllUsers(filtered);
+  setUserSearch("");
+  setIsAddMembersOpen(true);
+};
+
+const addMember = async (targetUserId: string) => {
+  if (!id || !user?.id) return;
+  if (myRole !== "owner" && myRole !== "admin") return;
+
+  setAddingUserId(targetUserId);
+
+  const { error } = await supabase.from("group_chat_members").insert({
+    group_chat_id: id,
+    user_id: targetUserId,
+    role: "member",
+    added_by: user.id,
+  });
+
+  if (error) {
+    console.error("Ошибка добавления участника:", error);
+    alert(`Ошибка добавления: ${error.message}`);
+    setAddingUserId(null);
+    return;
+  }
+
+  await loadMembers(id, user.id);
+
+  setAllUsers((prev) => prev.filter((u) => u.id !== targetUserId));
+  setAddingUserId(null);
+ };
 
   const getProfileById = (userId: string) => {
     return profiles.find((p) => p.id === userId) ?? null;
@@ -786,15 +821,124 @@ export default function GroupChatPage() {
         </div>
       </footer>
       <GroupChatInfoDrawer
-        open={isInfoOpen}
-        onClose={() => setIsInfoOpen(false)}
-        groupTitle={group?.title || "Группа"}
-        members={members}
-        currentUserId={user.id}
-        onRemoveMember={removeMember}
-        onAddMember={addMember}
-      />
+       open={isInfoOpen}
+       onClose={() => setIsInfoOpen(false)}
+       groupTitle={group?.title || "Группа"}
+       members={members}
+       currentUserId={user.id}
+       onRemoveMember={removeMember}
+      onAddMember={openAddMembersModal}
+       />
+       {isAddMembersOpen && (
+  <div className="fixed inset-0 z-[60]">
+    <div
+      className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+      onClick={() => setIsAddMembersOpen(false)}
+    />
 
+    <div className="absolute inset-x-0 top-1/2 mx-auto w-full max-w-lg -translate-y-1/2 rounded-[2rem] border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0f172a] shadow-2xl">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+        <div>
+          <h3 className="text-lg font-black text-gray-900 dark:text-white">
+            Добавить участника
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Выбери пользователя из списка
+          </p>
+        </div>
+
+        <button
+          onClick={() => setIsAddMembersOpen(false)}
+          className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      <div className="p-4 border-b border-gray-100 dark:border-gray-800">
+        <input
+          value={userSearch}
+          onChange={(e) => setUserSearch(e.target.value)}
+          placeholder="Поиск по имени или username..."
+          className="w-full rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 text-gray-900 dark:text-white"
+        />
+      </div>
+
+      <div className="max-h-[420px] overflow-y-auto p-4 space-y-3">
+        {allUsers
+          .filter((profile) => {
+            const q = userSearch.trim().toLowerCase();
+            if (!q) return true;
+
+            const fullName = profile.full_name?.toLowerCase() || "";
+            const username = profile.username?.toLowerCase() || "";
+
+            return fullName.includes(q) || username.includes(q);
+          })
+          .map((profile) => {
+            const name =
+              profile.full_name || profile.username || "Пользователь";
+
+            return (
+              <div
+                key={profile.id}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-white/5 p-3"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 shrink-0">
+                    {profile.avatar_url ? (
+                      <Image
+                        src={profile.avatar_url}
+                        alt={name}
+                        width={44}
+                        height={44}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                        {name.slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-gray-900 dark:text-white truncate">
+                      {name}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                      {profile.username ? `@${profile.username}` : "Без username"}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => addMember(profile.id)}
+                  disabled={addingUserId === profile.id}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  {addingUserId === profile.id ? "Добавление..." : "Добавить"}
+                </button>
+              </div>
+            );
+          })}
+
+        {allUsers.filter((profile) => {
+          const q = userSearch.trim().toLowerCase();
+          if (!q) return true;
+
+          const fullName = profile.full_name?.toLowerCase() || "";
+          const username = profile.username?.toLowerCase() || "";
+
+          return fullName.includes(q) || username.includes(q);
+        }).length === 0 && (
+          <div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
+            Нет пользователей для добавления
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+)}
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
